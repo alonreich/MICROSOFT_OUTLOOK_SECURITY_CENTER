@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('securityApi', {
     backupConfig: () => ipcRenderer.invoke('backup-config'),
     restoreConfig: () => ipcRenderer.invoke('restore-config'),
     onOutlookScanUpdate: (callback) => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
-    onScanFinished: (callback) => ipcRenderer.on('scan-finished', (event, mode) => callback(m)),
+    onScanFinished: (callback) => ipcRenderer.on('scan-finished', (event, mode) => callback(mode)),
     onStatusSync: (callback) => ipcRenderer.on('status-sync', (event, val) => callback(val)),
     onEmailReleased: (callback) => ipcRenderer.on('email-released-success', (event, id) => callback(id)),
     onEmailReleasedError: (callback) => ipcRenderer.on('email-released-error', (event, data) => callback(data)),

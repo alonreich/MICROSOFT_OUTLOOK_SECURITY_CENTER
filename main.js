@@ -31,8 +31,8 @@ const store = new Store({
   name: 'security-data',
   defaults: {
     processedIds: [],
-    stats: { spam: [], clean: [], malicious: [], suspicious: [] },
-    enabled: true,
+    stats: { spam: [], safe: [], malicious: [], suspicious: [] },
+    enabled: false,
     historyScanEnabled: false,
     vtApiKey: "80a58ac4dbf037bebb6190a350160f451932a4a3cd56085c34e5b6483e058b98",
     spamKeywords: ["viagra", "lottery", "urgent", "inheritance", "winner", "prize", "verify your account", "bitcoin", "investment"],
@@ -116,48 +116,57 @@ function runOutlookScanner(mode = 'OnAccess') {
     });
   });
 }
-function createTray() {
-  const isEnabled = store.get('enabled');
-  tray = new Tray(nativeImage.createFromPath(path.join(APP_ROOT, `tray_${isEnabled ? 'on' : 'off'}.png`)));
-  const updateTrayMenu = () => {
-    const currentEnabled = store.get('enabled');
-    tray.setContextMenu(Menu.buildFromTemplate([
-        { label: 'Show Security Hub', click: () => { if (mainWindow) mainWindow.show(); } },
-        { label: currentEnabled ? 'DISABLE PROTECTION' : 'ENABLE MICROSOFT OUTLOOK PROTECTION', click: () => { 
-            const newState = !currentEnabled; store.set('enabled', newState); 
-            updateAppIcons(newState); 
-            if (mainWindow) {
-                mainWindow.webContents.send('status-sync', newState);
-                mainWindow.webContents.send('outlook-scan-update', { status: newState ? "Enabled" : "Disabled", details: `Protection turned ${newState ? "ON" : "OFF"} from Tray.` });
-            }
-            updateTrayMenu(); 
-        } },
-        { type: 'separator' }, { label: 'Exit Application', click: () => { isQuitting = true; if(mainWindow) mainWindow.setClosable(true); app.quit(); } }
-    ]));
-  };
-  tray.setToolTip('MICROSOFT OUTLOOK SECURITY CENTER');
-  updateTrayMenu();
-  tray.on('click', () => { if (mainWindow) mainWindow.show(); });
-}
 function createWindow() {
   const isEnabled = store.get('enabled');
-  mainWindow = new BrowserWindow({ ...store.get('windowBounds'), backgroundColor: '#0a0e1c', icon: path.join(APP_ROOT, `icon_${isEnabled ? 'on' : 'off'}.png`), show: false, closable: true, webPreferences: { preload: path.join(APP_ROOT, 'preload.js'), nodeIntegration: false, contextIsolation: true } });
+  mainWindow = new BrowserWindow({ 
+    ...store.get('windowBounds'), 
+    backgroundColor: '#0a0e1c', 
+    icon: path.join(APP_ROOT, `icon_${isEnabled ? 'on' : 'off'}.png`), 
+    show: false, 
+    closable: true, 
+    webPreferences: { 
+      preload: path.join(APP_ROOT, 'preload.js'), 
+      nodeIntegration: false, 
+      contextIsolation: true 
+    } 
+  });
   mainWindow.loadFile(path.join(APP_ROOT, 'index.html'));
   mainWindow.setMenuBarVisibility(false);
-  mainWindow.on('close', (event) => { if (!isQuitting) { event.preventDefault(); mainWindow.hide(); return false; } });
-  mainWindow.on('minimize', (event) => { event.preventDefault(); mainWindow.hide(); });
+
+  mainWindow.on('close', (event) => { 
+    if (!isQuitting) { 
+      isQuitting = true; 
+      app.quit();
+    } 
+  });
+
   mainWindow.on('resize', () => { if(!mainWindow.isMaximized()) store.set('windowBounds', mainWindow.getBounds()); });
   mainWindow.on('move', () => { store.set('windowBounds', mainWindow.getBounds()); });
+
   mainWindow.once('ready-to-show', () => { 
-      mainWindow.show(); 
-      logLine('APP_READY', 'Dashboard loaded');
+      mainWindow.minimize();
+      mainWindow.showInactive(); 
+      logLine('APP_READY', 'Dashboard loaded (minimized to taskbar)');
       if (store.get('historyScanEnabled')) runOutlookScanner('FullScan'); else runOutlookScanner('OnAccess'); 
   });
 }
-app.on('ready', () => { createTray(); createWindow(); startScheduler(); });
+
+app.on('ready', () => { createWindow(); startScheduler(); });
 ipcMain.handle('get-stats', () => store.get('stats'));
 ipcMain.handle('get-config', () => ({ enabled: store.get('enabled'), historyScanEnabled: store.get('historyScanEnabled'), vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), columnWidths: store.get('columnWidths'), schedule: store.get('schedule') }));
-ipcMain.on('set-enabled', (event, val) => { logLine('USER_ACTION', `Protection set ${val ? 'ON' : 'OFF'}`); store.set('enabled', val); updateAppIcons(val); });
+ipcMain.on('set-enabled', (event, val) => { 
+    logLine('USER_ACTION', `Protection set ${val ? 'ON' : 'OFF'}`); 
+    store.set('enabled', val); 
+    updateAppIcons(val); 
+    if (val) {
+        runOutlookScanner('OnAccess');
+    } else if (currentScanChild) {
+        logLine('USER_ACTION', 'Scanner halted by user (Protection Disabled).');
+        currentScanChild.kill();
+        isScanning = false;
+        currentScanChild = null;
+    }
+});
 ipcMain.on('set-history-enabled', (event, val) => { 
     logLine('USER_ACTION', `History scan set ${val ? 'ON' : 'OFF'}`); 
     store.set('historyScanEnabled', val); 
@@ -224,7 +233,7 @@ ipcMain.on('release-email', (event, { entryId, whitelistEntry, originalFolder })
                     });
                     stats[cat] = remaining;
                 });
-                itemsToMove.forEach(item => { if (!stats.clean.some(c => c.entryId === item.entryId)) stats.clean.push(item); });
+                itemsToMove.forEach(item => { if (!stats.safe.some(c => c.entryId === item.entryId)) stats.safe.push(item); });
                 store.set('stats', stats); if (mainWindow) mainWindow.webContents.send('stats-update', stats);
             }
             logLine('APP_EVENT', `Release transaction completed: ${entryId.substring(0,10)}...`);
