@@ -1,0 +1,9 @@
+node_modules/
+logs/
+dist/
+out/
+release-build/
+*.exe
+*.msi
+*.zip
+*.7z

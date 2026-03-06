@@ -1,0 +1,22 @@
+{
+  "name": "microsoft-outlook-security-center",
+  "version": "1.7.0",
+  "description": "Professional Forensic Security Hub for Outlook",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-packager . MICROSOFT_OUTLOOK_SECURITY_CENTER --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.png",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["security", "outlook", "forensics", "spam"],
+  "author": "Alon Reich",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^40.7.0",
+    "electron-packager": "^17.1.2"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2"
+  }
+}

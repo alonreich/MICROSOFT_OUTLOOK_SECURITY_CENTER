@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MICROSOFT OUTLOOK SECURITY CENTER</title>
+  <style>
+    :root {
+      --bg: #0a0e1c; --card: rgba(255, 255, 255, 0.04); --border: rgba(255, 255, 255, 0.12); --text: #f4f5fa; --muted: #a0a6cc; --ok: #8af7a8; --warn: #ffb454; --danger: #ff6161; --accent: #8e75ff;
+      --col-subject: 2fr; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-action: 150px; --col-reasoning: 1fr;
+    }
+    body { background: radial-gradient(circle at top left, #12182e, #0a0e1c); color: var(--text); font-family: "Segoe UI", sans-serif; padding: 25px; margin: 0; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; gap: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+    .title-area { display: flex; align-items: center; gap: 15px; }
+    .lock-icon { width: 30px; height: 30px; fill: var(--ok); }
+    .title { font-weight: 800; font-size: 1.5rem; letter-spacing: 1px; }
+    .controls { display: flex; gap: 12px; align-items: center; }
+    .status-btn { padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; font-size: 0.72rem; text-transform: uppercase; }
+    .status-btn.on { background: var(--ok); color: #000; }
+    .status-btn.off { background: var(--danger); color: white; }
+    .btn-secondary { background: rgba(255, 255, 255, 0.15); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.25); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-weight: 600; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.25); transform: translateY(-1px); }
+    .btn-secondary.active { background: var(--accent); border-color: var(--accent); }
+    .btn-destructive { background: transparent; color: #666; border: 1px solid #333; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-weight: 600; transition: all 0.3s; }
+    .btn-destructive:hover { background: #800000; color: white; border-color: var(--danger); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; text-align: center; cursor: pointer; }
+    .stat-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .stat-card.active { background: rgba(142, 117, 255, 0.1); border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.3); }
+    .stat-val { font-size: 2rem; font-weight: 800; margin-bottom: 5px; }
+    .stat-label { font-size: 0.65rem; text-transform: uppercase; color: var(--muted); }
+    .main-content { display: grid; grid-template-columns: 1fr 400px; gap: 20px; flex: 1; min-height: 0; }
+    .list-section { background: var(--card); border: 1px solid var(--border); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
+    .list-header-row { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); gap: 0; padding: 0; background: rgba(255,255,255,0.05); font-size: 0.65rem; font-weight: bold; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .header-cell { padding: 12px 15px; position: relative; border-right: 1px solid rgba(255,255,255,0.05); overflow: hidden; text-align: center; }
+    .resizer { position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: col-resize; user-select: none; }
+    .resizer:hover { background: var(--accent); }
+    .list-items { flex: 1; overflow-y: auto; }
+    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); gap: 0; padding: 0; border-bottom: 1px solid var(--border); font-size: 0.72rem; cursor: pointer; align-items: center; white-space: nowrap; }
+    .list-item > div { padding: 10px 15px; border-right: 1px solid rgba(255,255,255,0.03); overflow: hidden; text-overflow: ellipsis; text-align: center; }
+    .list-item:hover { background: rgba(255,255,255,0.05); }
+    .list-item.selected { background: rgba(142, 117, 255, 0.2) !important; border-left: 4px solid var(--accent); }
+    .log-section { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 15px; font-family: "Cascadia Code", monospace; font-size: 0.61rem; overflow-y: auto; color: #d1d5db; box-shadow: inset 0 0 20px rgba(0,0,0,0.3); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(4px); }
+    .modal-content { background: radial-gradient(circle at top left, #161c36, #0a0e1c); padding: 30px; border-radius: 16px; border: 1px solid var(--accent); width: 1000px; display: flex; flex-direction: column; gap: 15px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.6); }
+    .modal-header { font-weight: bold; font-size: 1.2rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
+    .detail-grid { display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 0.95rem; line-height: 1.6; }
+    .detail-label { color: var(--muted); font-weight: bold; }
+    .setting-group { background: rgba(255, 255, 255, 0.08); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+    .setting-group label { color: #ffffff; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: block; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    .header-area { background: rgba(0,0,0,0.5); border: 1px solid var(--accent); border-radius: 8px; padding: 15px; font-family: "Cascadia Code", monospace; font-size: 0.72rem; white-space: pre-wrap; overflow-wrap: break-word; max-height: 300px; overflow-y: auto; color: #8af7a8; }
+    input, textarea, select { background: #000; color: #fff; border: 1px solid rgba(142, 117, 255, 0.7); padding: 12px; border-radius: 8px; width: 100%; box-sizing: border-box; font-size: 0.85rem; transition: all 0.2s; }
+    input:focus, textarea:focus { border-color: var(--accent); outline: none; background: #050505; box-shadow: 0 0 15px rgba(142, 117, 255, 0.4); }
+    .context-menu { display: none; position: absolute; background: #1c1c24; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000; }
+    .context-menu-item { padding: 12px 20px; font-size: 0.85rem; color: #fff; cursor: pointer; }
+    .context-menu-item:hover { background: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title-area">
+      <button id="reset-btn" class="btn-destructive" title="Hard Wipe Everything" style="margin-right: 20px;">RESET APP</button>
+      <svg class="lock-icon" viewBox="0 0 24 24"><path d="M18,8H17V6A5,5 0 0,0 12,1A5,5 0 0,0 7,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8M9,6A3,3 0 0,1 12,3A3,3 0 0,1 15,6V8H9V6M18,20H6V10H18V20M12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17Z" /></svg>
+      <div class="title">MICROSOFT OUTLOOK SECURITY CENTER</div>
+    </div>
+    <div class="controls">
+        <button id="scanner-toggle" class="status-btn on">Turned On</button>
+        <button id="history-toggle" class="btn-secondary">PERFORM COMPLETE HISTORY SCAN</button>
+        <button id="schedule-btn" class="btn-secondary">SCHEDULE SCAN</button>
+        <button id="show-logs-btn" class="btn-secondary">LOGS</button>
+        <button id="settings-btn" class="btn-secondary">
+            <svg style="width:14px; height:14px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.5 15.47,5.19 14.86,4.97L14.47,2.33C14.44,2.1 14.22,1.92 14,1.92H10C9.78,1.92 9.56,2.1 9.53,2.33L9.14,4.97C8.53,5.19 7.96,5.5 7.44,5.9L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,18.1C7.96,18.5 8.53,18.81 9.14,19.03L9.53,21.67C9.56,21.9 9.78,22.08 10,22.08H14C14.22,22.08 14.44,21.9 14.47,21.67L14.86,19.03C15.47,18.81 16.04,18.5 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+            <span style="margin: 0 5px;">SETTINGS</span>
+            <svg style="width:14px; height:14px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.5 15.47,5.19 14.86,4.97L14.47,2.33C14.44,2.1 14.22,1.92 14,1.92H10C9.78,1.92 9.56,2.1 9.53,2.33L9.14,4.97C8.53,5.19 7.96,5.5 7.44,5.9L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,18.1C7.96,18.5 8.53,18.81 9.14,19.03L9.53,21.67C9.56,21.9 9.78,22.08 10,22.08H14C14.22,22.08 14.44,21.9 14.47,21.67L14.86,19.03C15.47,18.81 16.04,18.5 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+        </button>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card" id="card-malicious" style="border-bottom: 4px solid var(--danger);"><div class="stat-val" id="count-malicious" style="color: var(--danger)">0</div><div class="stat-label">Malicious</div></div>
+    <div class="stat-card" id="card-suspicious" style="border-bottom: 4px solid var(--warn);"><div class="stat-val" id="count-suspicious" style="color: var(--warn)">0</div><div class="stat-label">Suspicious</div></div>
+    <div class="stat-card" id="card-spam" style="border-bottom: 4px solid var(--warn);"><div class="stat-val" id="count-spam" style="color: var(--warn)">0</div><div class="stat-label">Spam</div></div>
+    <div class="stat-card" id="card-clean" style="border-bottom: 4px solid var(--ok);"><div class="stat-val" id="count-clean" style="color: var(--ok)">0</div><div class="stat-label">Safe</div></div>
+  </div>
+  <div class="main-content">
+    <div class="list-section">
+        <div class="list-header-row" id="lhr">
+            <div class="header-cell" data-col="subject">Subject<div class="resizer"></div></div>
+            <div class="header-cell" data-col="date">Date<div class="resizer"></div></div>
+            <div class="header-cell" data-col="time">Time<div class="resizer"></div></div>
+            <div class="header-cell" data-col="ip">IP Address<div class="resizer"></div></div>
+            <div class="header-cell" data-col="verdict">Verdict<div class="resizer"></div></div>
+            <div class="header-cell" data-col="action">Action<div class="resizer"></div></div>
+            <div class="header-cell" data-col="reasoning">Reasoning<div class="resizer"></div></div>
+        </div>
+        <div class="list-items" id="threat-list"></div>
+    </div>
+    <div class="log-section" id="log-container"></div>
+  </div>
+  <div id="details-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span>Email Forensic Details</span>
+            <button id="copy-headers-btn" class="btn-secondary" style="font-size: 0.65rem;">Copy Full Headers</button>
+        </div>
+        <div class="detail-grid" id="detail-view"></div>
+        <div class="detail-label" style="margin-top:15px; margin-bottom:5px;">Full RFC 822 Headers:</div>
+        <div class="header-area" id="header-text"></div>
+        <button id="close-details-btn" style="margin-top:20px;">Close Details</button>
+    </div>
+  </div>
+  <div id="settings-modal" class="modal">
+    <div class="modal-content" style="width: 800px; height: 80vh; max-height: 800px;">
+        <div class="modal-header">Security Center Configuration</div>
+        <div style="flex: 1; overflow-y: auto; padding-right: 15px; display: flex; flex-direction: column; gap: 20px;">
+            <div class="setting-group">
+                <div class="detail-label" style="font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 15px;">API & ENGINE</div>
+                <label>VirusTotal Forensic API Key</label>
+                <input type="password" id="vt-api-key" placeholder="Enter your VT API Key">
+                <label style="margin-top:15px; display:block;">Spam Engine Keywords (comma separated)</label>
+                <textarea id="spam-keywords" style="height:100px; font-family: inherit; font-size: 0.8rem; line-height: 1.4;"></textarea>
+            </div>
+            
+            <div class="setting-group">
+                <div class="detail-label" style="font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 15px;">FORENSIC WHITELISTS</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <label>Authorized Emails</label>
+                        <textarea id="wl-emails" style="height:120px; font-family: inherit; font-size: 0.75rem;"></textarea>
+                    </div>
+                    <div>
+                        <label>Authorized IP Addresses</label>
+                        <textarea id="wl-ips" style="height:120px; font-family: inherit; font-size: 0.75rem;"></textarea>
+                    </div>
+                </div>
+                <label style="margin-top:15px; display:block;">Authorized Domains</label>
+                <textarea id="wl-domains" style="height:80px; font-family: inherit; font-size: 0.75rem;"></textarea>
+            </div>
+        </div>
+        <div style="display:flex; gap:15px; margin-top:25px; border-top: 1px solid var(--border); padding-top: 20px;">
+            <button id="save-settings" style="flex:2; padding: 12px; font-weight: bold;">Apply Changes & Sync Engine</button>
+            <button id="close-settings" class="btn-secondary" style="flex:1; padding: 12px;">Cancel</button>
+        </div>
+    </div>
+  </div>
+  <div id="schedule-modal" class="modal">
+    <div class="modal-content" style="width: 450px;">
+        <div class="modal-header">Schedule One-Time Full Audit</div>
+        <div id="power-warning" style="display:none; background:rgba(255,180,84,0.15); border:1px solid var(--warn); padding:10px; border-radius:8px; font-size:0.75rem; color:var(--warn); margin-top:10px;">
+            ⚠️ <b>POWER ALERT:</b> Your PC is set to Sleep/Hibernate. The scan may be interrupted. 
+            <button id="fix-power-btn" style="background:var(--warn); color:#000; border:none; padding:2px 8px; border-radius:4px; margin-top:5px; font-weight:bold; cursor:pointer;">STAY AWAKE DURING SCAN</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:15px; margin-top:15px;">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                <input type="checkbox" id="sched-enabled" style="width:auto;"> Enable Scheduled Scan
+            </label>
+            <div>
+                <label>Select Date & Time:</label>
+                <input type="datetime-local" id="sched-datetime" style="margin-top:5px;">
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="save-schedule" style="flex:1;">Confirm Schedule</button>
+            <button id="close-schedule" class="btn-secondary" style="flex:1;">Cancel</button>
+        </div>
+    </div>
+  </div>
+  <div id="reset-modal" class="modal">
+    <div class="modal-content" style="border-color: var(--danger); width: 500px;">
+        <div class="modal-header" style="color: var(--danger);">WARNING: HARD RESET</div>
+        <div style="font-size: 1rem; line-height: 1.5;">You are about to wipe the entire database. The app will forget every email it has ever scanned and start from scratch.</div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="confirm-reset" style="flex:1; background: var(--danger); color: #fff;">YES, WIPE EVERYTHING</button>
+            <button id="cancel-reset" class="btn-secondary" style="flex:1;">CANCEL</button>
+        </div>
+    </div>
+  </div>
+  <div id="ctx-menu" class="context-menu">
+      <div class="context-menu-item" id="rel-email">RELEASE & WHITELIST EMAIL</div>
+      <div class="context-menu-item" id="rel-ip">RELEASE & WHITELIST IP ADDRESS</div>
+      <div class="context-menu-item" id="rel-combo">RELEASE DOMAIN + IP COMBO</div>
+      <div class="context-menu-item" id="rel-domain">RELEASE DOMAIN</div>
+  </div>
+  <script>
+    const api = window.securityApi;
+    const list = document.getElementById('threat-list');
+    const detModal = document.getElementById('details-modal');
+    const logContainer = document.getElementById('log-container');
+    let stats = { malicious: [], suspicious: [], spam: [], clean: [] };
+    let selected = null;
+    let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
+    function addLog(text) { 
+        const entry = document.createElement('div'); 
+        entry.style.padding='2px 0'; 
+        const now = new Date();
+        const timestamp = String(now.getHours()).padStart(2, '0') + ':' + 
+                          String(now.getMinutes()).padStart(2, '0') + ':' + 
+                          String(now.getSeconds()).padStart(2, '0');
+        entry.textContent=`[${timestamp}] ${text}`; 
+        logContainer.prepend(entry); 
+    }
+    function updateDashboard(data) { stats = data; ['malicious','suspicious','spam','clean'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = data[c].length; }); renderList(); }
+    function renderList() {
+        const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
+        const items = stats[cat] || [];
+        list.innerHTML = items.slice(-100).reverse().map((i, idx) => {
+            const [d, t] = i.date.split(' ');
+            return `<div class="list-item" data-idx="${idx}"><div dir="auto" title="${i.subject}">${i.subject}</div><div>${d}</div><div>${t}</div><div title="${i.ip || 'N/A'}">${i.ip || 'N/A'}</div><div style="color:var(--${cat==='clean'?'ok':cat==='malicious'?'danger':'warn'})">${cat.toUpperCase()}</div><div title="${i.action||'None'}">${i.action||'None'}</div><div title="${i.tier||''}">${i.tier||''}</div></div>`;
+        }).join('');
+        document.querySelectorAll('.list-item').forEach(el => {
+            el.onclick = () => { document.querySelectorAll('.list-item').forEach(i => i.classList.remove('selected')); el.classList.add('selected'); selected = items.slice(-100).reverse()[el.dataset.idx]; };
+            el.ondblclick = () => {
+                const i = selected; const [d, t] = i.date.split(' ');
+                document.getElementById('detail-view').innerHTML = `<div class="detail-label">Subject:</div><div dir="auto">${i.subject}</div><div class="detail-label">Spam Score:</div><div style="font-weight:bold; color:var(--accent)">${i.score || 0}</div><div class="detail-label">Received:</div><div>${d} at ${t}</div><div class="detail-label">Sender:</div><div>${i.sender || 'Unknown'}</div><div class="detail-label">Verdict:</div><div style="text-transform:uppercase">${cat}</div><div class="detail-label">Action:</div><div>${i.action || 'None'}</div><div class="detail-label">Forensics:</div><div>${i.tier || 'None'}</div><div class="detail-label">Original:</div><div>${i.originalFolder || 'Unknown'}</div><div class="detail-label">IP Address:</div><div>${i.ip || 'N/A'}</div>`;
+                document.getElementById('header-text').textContent = i.fullHeaders || "No header information available.";
+                detModal.style.display = 'flex';
+            };
+            el.oncontextmenu = (e) => { e.preventDefault(); document.querySelectorAll('.list-item').forEach(i => i.classList.remove('selected')); el.classList.add('selected'); selected = items.slice(-100).reverse()[el.dataset.idx]; if (cat !== 'clean') { document.getElementById('ctx-menu').style.display = 'block'; document.getElementById('ctx-menu').style.left = e.pageX+'px'; document.getElementById('ctx-menu').style.top = e.pageY+'px'; } };
+        });
+    }
+    document.getElementById('copy-headers-btn').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); };
+    document.getElementById('scanner-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.enabled; api.setEnabled(next); updateToggleUi(next); };
+    document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.historyScanEnabled; api.setHistoryEnabled(next); document.getElementById('history-toggle').classList.toggle('active', next); };
+    document.getElementById('schedule-btn').onclick = async () => {
+        const cfg = await api.getConfig();
+        const pwr = await api.checkPowerStatus();
+        document.getElementById('power-warning').style.display = pwr.safe ? 'none' : 'block';
+        document.getElementById('sched-enabled').checked = cfg.schedule?.enabled || false;
+        document.getElementById('sched-datetime').value = cfg.schedule?.datetime || "";
+        document.getElementById('schedule-modal').style.display = 'flex';
+    };
+    document.getElementById('fix-power-btn').onclick = () => { api.overridePowerPlan(); document.getElementById('power-warning').style.display = 'none'; addLog("Power plan overridden: Stay awake enabled."); };
+    document.getElementById('save-schedule').onclick = () => {
+        const enabled = document.getElementById('sched-enabled').checked;
+        const datetime = document.getElementById('sched-datetime').value;
+        if (enabled && !datetime) { alert("Please select a date and time."); return; }
+        api.setSchedule({ enabled, datetime });
+        document.getElementById('schedule-modal').style.display = 'none';
+        addLog(`Audit scheduled: ${enabled ? 'One-time run at ' + datetime : 'Disabled'}`);
+    };
+    document.getElementById('close-schedule').onclick = () => document.getElementById('schedule-modal').style.display = 'none';
+    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
+    document.getElementById('close-details-btn').onclick = () => detModal.style.display = 'none';
+    document.getElementById('settings-btn').onclick = async () => {
+        const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey; document.getElementById('spam-keywords').value = cfg.spamKeywords.join(', ');
+        document.getElementById('wl-emails').value = cfg.whitelist.emails.join(', ');
+        document.getElementById('wl-ips').value = cfg.whitelist.ips.join(', ');
+        document.getElementById('wl-domains').value = cfg.whitelist.domains.join(', ');
+        document.getElementById('settings-modal').style.display = 'flex';
+    };
+    document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display='none';
+    document.getElementById('save-settings').onclick = async () => {
+        const cfg = await api.getConfig();
+        const wl = {
+            emails: document.getElementById('wl-emails').value.split(',').map(v=>v.trim()).filter(v=>v),
+            ips: document.getElementById('wl-ips').value.split(',').map(v=>v.trim()).filter(v=>v),
+            domains: document.getElementById('wl-domains').value.split(',').map(v=>v.trim()).filter(v=>v),
+            combos: cfg.whitelist.combos
+        };
+        api.setVTKey(document.getElementById('vt-api-key').value); 
+        api.setSpamKeywords(document.getElementById('spam-keywords').value.split(',').map(k=>k.trim()).filter(k=>k));
+        api.setWhitelist(wl);
+        document.getElementById('settings-modal').style.display='none'; addLog("Settings & Whitelists updated.");
+    };
+    document.getElementById('reset-btn').onclick = () => document.getElementById('reset-modal').style.display = 'flex';
+    document.getElementById('cancel-reset').onclick = () => document.getElementById('reset-modal').style.display = 'none';
+    document.getElementById('confirm-reset').onclick = () => api.resetApp();
+    document.getElementById('rel-email').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'email', value: selected.sender }, originalFolder: selected.originalFolder });
+    document.getElementById('rel-ip').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'ip', value: selected.ip }, originalFolder: selected.originalFolder });
+    document.getElementById('rel-combo').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'combo', ip: selected.ip, domain: selected.domain }, originalFolder: selected.originalFolder });
+    document.getElementById('rel-domain').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'domain', value: selected.domain }, originalFolder: selected.originalFolder });
+    document.querySelectorAll('.resizer').forEach(r => {
+        r.onmousedown = (e) => {
+            const cell = r.parentElement; const col = cell.dataset.col; const startX = e.pageX; const startW = cell.offsetWidth;
+            const onMove = (ev) => { const w = startW + (ev.pageX - startX); if(w>50) { colWidths[col]=w+'px'; applyColWidths(); } };
+            const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); api.saveColumnWidths(colWidths); };
+            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        };
+    });
+    function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
+    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); renderList(); });
+    document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
+    function updateToggleUi(en) { const b = document.getElementById('scanner-toggle'); if(b) { b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } }
+    api.onOutlookScanUpdate((data) => addLog(`${data.status}: ${data.details}`));
+    api.onScanFinished((m) => addLog(`${m} scan completed.`));
+    api.onStatusSync(updateToggleUi);
+    api.onEmailReleased(() => addLog("SUCCESS: Items Physically Restored & Verified."));
+    api.onEmailReleasedError((data) => {
+        addLog(`RESTORE FAILED: ${data.message}`);
+        alert(`CRITICAL SYNC ERROR:\n\n${data.message}\n\nPlease check Outlook manually.`);
+    });
+    api.onStatsUpdate(updateDashboard);
+    async function init() { const cfg = await api.getConfig(); updateToggleUi(cfg.enabled); if(cfg.columnWidths) { colWidths = cfg.columnWidths; applyColWidths(); } document.getElementById('history-toggle').classList.toggle('active', cfg.historyScanEnabled); updateDashboard(await api.getStats()); }
+    init();
+  </script>
+</body>
+</html>

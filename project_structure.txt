@@ -1,0 +1,67 @@
+# SOURCE OF TRUTH: MICROSOFT OUTLOOK SECURITY CENTER
+# VERSION: 1.7.0
+# TARGET: AI AGENT / SENIOR DEVELOPER HANDOFF
+
+## 1. PROJECT MISSION
+To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook that automates threat isolation (Malware/Spam) while preserving privacy and providing a professional SOC-style dashboard. It specifically targets users without Domain/Exchange admin rights.
+
+## 2. CORE ARCHITECTURE
+- **UI:** Electron.js (Dark Navy / Radial Gradient Theme).
+- **Engine:** PowerShell Core (COM-interface to Outlook Desktop). Compatible with Windows PowerShell 5.1.
+- **Communication:** Bi-directional JSON-based IPC.
+- **Argument Exchange:** Due to Windows command-line limits, the app writes settings and processed IDs to a temporary JSON file in `%TMP%` which the engine reads directly.
+- **Database:** `electron-store` (Persistent JSON). Correctly handles both CommonJS and ESM default exports.
+- **Log Management:** SOC format in `logs/debug.log` with strict 5MB/5-file rotation. Captures User Actions, Engine Progress, API Failures, and System Crashes.
+
+## 3. SCANNING & PRIORITIZATION LOGIC
+- **OnAccess (Active):** Monitors [Unread] emails only. Sorted **NEWEST-TO-OLDEST** for immediate threat response.
+- **History (On-Demand):** Scans the entire Inbox. Sorted **OLDEST-TO-NEWEST** for systematic archival cleaning.
+- **Streaming Discovery:** Implements "Just-in-Time" auditing. No pre-scan counting delay; the engine begins processing immediately, skipping safe items at thousands per second using a high-speed `HashSet`.
+- **No-Loop Guarantee:** Processed EntryIDs are permanently stored. User-released false-positives are exempt from all future scans.
+
+## 4. FORENSIC DISASSEMBLY PROTOCOL
+1. **Triple-Fallback Header Extraction:**
+    - Method A: Standard Internet Headers (0x007D001E).
+    - Method B: Transportation Headers (0x007D001F).
+    - Method C: Forensic Reconstruction (Manual build from Sender/Date/ID metadata).
+2. **IP Extraction (v4 & v6):** Scans `X-Originating-IP` and `Received` chains. Filters out 127.0.0.1, fe80, and corporate relays to find the true Public Originating IP.
+3. **Body Sanitization:** Forces Plain-Text disassembly to neutralize tracking pixels and HTML exploits.
+4. **MIME Isolation (In-Memory):** Extracts attachments directly into RAM. Computes SHA256 hashes without disk writes.
+
+## 5. THE 3-TIER FAILOVER ALGORITHM
+1. **Tier 1 (VirusTotal):** Primary check (10s timeout). Fails over instantly on HTTP 429 (Quota) or 401.
+2. **Tier 2 (Team Cymru MHR):** Failover 1. DNS TXT-based reputation check (127.0.0.2 = Malicious).
+3. **Tier 3 (CIRCL Hashlookup):** Failover 2. REST API verification for known-bad signatures.
+
+## 6. SPAM RUBRICS & SENSITIVITY
+Point-based scoring determines the final verdict (Default Threshold: 5):
+- **Weights:** Subject Match (+3), Body Match (+1), Phrase Pairs (+4), Link Anomalies (+2).
+- **Friendly Sender:** -100 points (Outlook Contacts only). Invalidated if Headers fail SPF/DKIM/DMARC.
+- **Word Decoding:** Normalizes obfuscated text (Pr1ze -> Prize) before analysis.
+
+## 7. VERDICT ROUTING & RECOVERY
+- **MALICIOUS:** Confirmed threats -> **Deleted Items**.
+- **SUSPICIOUS/SPAM:** Potential risks -> **Junk Email**.
+- **RECURSIVE RELEASE:** 
+    - Releasing a Domain/IP combination automatically finds and restores all matching items in the threat lists.
+    - **Smart Restore:** Returns email to its `OriginalFolder`. Falls back to Inbox with a detailed error popup and log entry if the original folder is missing.
+
+## 8. ADVANCED UI FEATURES
+- **Interaction:** Single-click to select (Purple highlight). **Double-click** to open 1000px Forensic Modal. Right-click for recursive whitelist menu.
+- **Forensic Modal:** Shows all metadata and Raw Headers in a Black/Green console. Features a "Copy to Clipboard" button.
+- **Table Layout:** 7 columns (Subject, Date, Time, IP, Verdict, Action, Reasoning). Centered alignment for all cells.
+- **Persistence:** Remembers Window Size (1500x900 default), Position, and Custom Column Widths.
+- **Language:** UTF-8 with BOM. UI uses `dir="auto"` for Hebrew/RTL support without layout distortion.
+- **Dynamic Icons:** Gold-Yellow (Active Protection) vs. Bright Red (Disabled). 
+- **Window Control:** 'X' and Minimize buttons redirected to "Minimize to Tray" for continuous service.
+
+## 9. EMERGENCY & CONFIGURATION
+- **RESET APP:** Located far-left of header (20px gap). Destructive wipe with disclaimer and auto-relaunch.
+- **SETTINGS:** Manage API Keys, Junk Keywords, Sensitivity, and the 4-segment Whitelist (Email, IP, Domain, Combo).
+
+## 10. PREREQUISITES & INSTALLATION
+- **Mail Client:** Microsoft Outlook Desktop (Classic). (New Outlook/Web not supported).
+- **Runtime:** Node.js (v18+) and Electron (v25+).
+- **Independence:** This application is completely self-contained. All dependencies are located within the local `node_modules` folder.
+- **Folder:** MICROSOFT_OUTLOOK_SECURITY_CENTER
+- **Policy:** Uses `-ExecutionPolicy Bypass` to run on restricted corporate environments without Admin rights.
