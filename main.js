@@ -2,34 +2,28 @@ const electron = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { shell } = require('electron');
-
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = electron;
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = electron;
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-gpu-cache');
+app.commandLine.appendSwitch('disk-cache-size', '1');
+app.commandLine.appendSwitch('media-cache-size', '1');
 const { execFile } = require('node:child_process');
-
 const APP_ROOT = __dirname;
 const LOG_DIR = path.join(APP_ROOT, 'logs');
 const DEBUG_LOG_PATH = path.join(LOG_DIR, 'debug.log');
-
 function logLine(section, details = '') {
   const now = new Date();
-  const timestamp = now.getFullYear() + '-' + 
-                    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-                    String(now.getDate()).padStart(2, '0') + ' ' + 
-                    String(now.getHours()).padStart(2, '0') + ':' + 
-                    String(now.getMinutes()).padStart(2, '0') + ':' + 
-                    String(now.getSeconds()).padStart(2, '0');
+  const timestamp = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
   const payload = `[${timestamp}] [${section}] ${details}\n`;
   try { 
     if (!fs.existsSync(LOG_DIR)) { fs.mkdirSync(LOG_DIR, { recursive: true }); }
     fs.appendFileSync(DEBUG_LOG_PATH, payload, { encoding: 'utf8', flag: 'a' }); 
   } catch (e) { console.error('Logging failed:', e); }
 }
-
 logLine('SESSION_START', 'MICROSOFT OUTLOOK SECURITY CENTER application launched.');
-
 process.on('uncaughtException', (error) => { logLine('CRITICAL_EXCEPTION', error.stack || error.message); });
 process.on('unhandledRejection', (reason) => { logLine('UNHANDLED_REJECTION', reason.stack || String(reason)); });
-
 const electronStoreModule = require('electron-store');
 const Store = electronStoreModule.default || electronStoreModule;
 const store = new Store({
@@ -49,14 +43,12 @@ const store = new Store({
     schedule: { enabled: false, datetime: "" }
   },
 });
-
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 let isScanning = false;
 let schedulerTimer = null;
 let currentScanChild = null;
-
 function startScheduler() {
     if (schedulerTimer) clearInterval(schedulerTimer);
     schedulerTimer = setInterval(() => {
@@ -71,7 +63,6 @@ function startScheduler() {
         }
     }, 30000);
 }
-
 function updateAppIcons(enabled) {
     const iconSuffix = enabled ? 'on' : 'off';
     const appIcon = path.join(APP_ROOT, `icon_${iconSuffix}.png`);
@@ -79,7 +70,6 @@ function updateAppIcons(enabled) {
     if (mainWindow) mainWindow.setIcon(nativeImage.createFromPath(appIcon));
     if (tray) tray.setImage(nativeImage.createFromPath(trayIcon));
 }
-
 function runOutlookScanner(mode = 'OnAccess') {
   if (!store.get('enabled') && mode === 'OnAccess') { logLine('SCAN_SKIP', 'Protection is disabled.'); return; }
   if (mode === 'FullScan' && !store.get('historyScanEnabled')) { logLine('SCAN_HALT', 'History scan disabled.'); return; }
@@ -112,19 +102,7 @@ function runOutlookScanner(mode = 'OnAccess') {
             currentIds.push(result.entryId); store.set('processedIds', currentIds);
             const stats = store.get('stats'); const cat = result.verdict.toLowerCase();
             if (stats[cat]) { 
-                stats[cat].push({ 
-                    subject: result.details, 
-                    date: result.timestamp, 
-                    entryId: result.entryId, 
-                    sender: result.sender, 
-                    ip: result.ip, 
-                    domain: result.domain, 
-                    originalFolder: result.originalFolder,
-                    fullHeaders: result.fullHeaders,
-                    score: result.score,
-                    action: result.action,
-                    tier: result.tier
-                }); 
+                stats[cat].push({ subject: result.details, date: result.timestamp, entryId: result.entryId, sender: result.sender, ip: result.ip, domain: result.domain, originalFolder: result.originalFolder, fullHeaders: result.fullHeaders, score: result.score, action: result.action, tier: result.tier }); 
                 store.set('stats', stats); 
             }
             const reasonNote = result.tier ? ` | Reason: ${result.tier}` : '';
@@ -138,7 +116,6 @@ function runOutlookScanner(mode = 'OnAccess') {
     });
   });
 }
-
 function createTray() {
   const isEnabled = store.get('enabled');
   tray = new Tray(nativeImage.createFromPath(path.join(APP_ROOT, `tray_${isEnabled ? 'on' : 'off'}.png`)));
@@ -162,7 +139,6 @@ function createTray() {
   updateTrayMenu();
   tray.on('click', () => { if (mainWindow) mainWindow.show(); });
 }
-
 function createWindow() {
   const isEnabled = store.get('enabled');
   mainWindow = new BrowserWindow({ ...store.get('windowBounds'), backgroundColor: '#0a0e1c', icon: path.join(APP_ROOT, `icon_${isEnabled ? 'on' : 'off'}.png`), show: false, closable: true, webPreferences: { preload: path.join(APP_ROOT, 'preload.js'), nodeIntegration: false, contextIsolation: true } });
@@ -178,9 +154,7 @@ function createWindow() {
       if (store.get('historyScanEnabled')) runOutlookScanner('FullScan'); else runOutlookScanner('OnAccess'); 
   });
 }
-
 app.on('ready', () => { createTray(); createWindow(); startScheduler(); });
-
 ipcMain.handle('get-stats', () => store.get('stats'));
 ipcMain.handle('get-config', () => ({ enabled: store.get('enabled'), historyScanEnabled: store.get('historyScanEnabled'), vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), columnWidths: store.get('columnWidths'), schedule: store.get('schedule') }));
 ipcMain.on('set-enabled', (event, val) => { logLine('USER_ACTION', `Protection set ${val ? 'ON' : 'OFF'}`); store.set('enabled', val); updateAppIcons(val); });
@@ -198,41 +172,66 @@ ipcMain.on('set-schedule', (event, val) => { logLine('USER_ACTION', `Scan schedu
 ipcMain.on('save-column-widths', (event, widths) => { store.set('columnWidths', widths); });
 ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
 ipcMain.on('app-reset', () => { logLine('USER_ACTION', 'App reset initiated'); store.clear(); app.relaunch(); app.exit(); });
-ipcMain.on('release-email', (event, { entryId, whitelistEntry, originalFolder }) => {
-    if (whitelistEntry) {
-        const wl = store.get('whitelist');
-        if (whitelistEntry.type === 'email') wl.emails.push(whitelistEntry.value);
-        if (whitelistEntry.type === 'ip') wl.ips.push(whitelistEntry.value);
-        if (whitelistEntry.type === 'domain') wl.domains.push(whitelistEntry.value);
-        if (whitelistEntry.type === 'combo') wl.combos.push({ ip: whitelistEntry.ip, domain: whitelistEntry.domain });
-        store.set('whitelist', wl);
-        const stats = store.get('stats');
-        ['malicious', 'suspicious', 'spam'].forEach(cat => { stats[cat] = stats[cat].filter(item => {
-            let match = false;
-            if (whitelistEntry.type === 'email' && item.sender === whitelistEntry.value) match = true;
-            if (whitelistEntry.type === 'ip' && item.ip === whitelistEntry.value) match = true;
-            if (whitelistEntry.type === 'domain' && item.domain === whitelistEntry.value) match = true;
-            if (whitelistEntry.type === 'combo' && item.ip === whitelistEntry.ip && item.domain === whitelistEntry.domain) match = true;
-            return !match;
-        }); });
-        store.set('stats', stats);
-        if (mainWindow) mainWindow.webContents.send('stats-update', stats);
+ipcMain.handle('backup-config', async () => {
+    const config = { vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), schedule: store.get('schedule'), processedIds: store.get('processedIds') };
+    const { filePath } = await dialog.showSaveDialog(mainWindow, { title: 'Export Security Configuration', defaultPath: path.join(app.getPath('downloads'), `outlook_security_backup_${Date.now()}.json`), filters: [{ name: 'JSON Files', extensions: ['json'] }] });
+    if (filePath) { fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8'); logLine('USER_ACTION', `Configuration backed up to: ${filePath}`); return true; }
+    return false;
+});
+ipcMain.handle('restore-config', async () => {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow, { title: 'Import Security Configuration', filters: [{ name: 'JSON Files', extensions: ['json'] }], properties: ['openFile'] });
+    if (filePaths && filePaths[0]) {
+        try {
+            const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
+            if (data.vtApiKey !== undefined) store.set('vtApiKey', data.vtApiKey);
+            if (data.spamKeywords) store.set('spamKeywords', data.spamKeywords);
+            if (data.rubrics) store.set('rubrics', data.rubrics);
+            if (data.whitelist) store.set('whitelist', data.whitelist);
+            if (data.schedule) store.set('schedule', data.schedule);
+            if (data.processedIds) store.set('processedIds', data.processedIds);
+            logLine('USER_ACTION', `Configuration restored from: ${filePaths[0]}`);
+            app.relaunch(); app.exit();
+            return true;
+        } catch (e) { logLine('CRITICAL_ERROR', `Restore failed: ${e.message}`); return false; }
     }
+    return false;
+});
+ipcMain.on('release-email', (event, { entryId, whitelistEntry, originalFolder }) => {
+    logLine('USER_ACTION', `Attempting confirmed release for ID: ${entryId.substring(0,10)}...`);
     execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(APP_ROOT, 'outlook-scanner.ps1'), '-Mode', 'Release', '-TargetEntryId', entryId, '-OriginalFolder', originalFolder || ""], { windowsHide: true }, (error, stdout) => {
         let success = !error; let errorMessage = "";
-        if (stdout) {
-            try {
-                const res = JSON.parse(stdout);
-                if (res.status === 'Error') { success = false; errorMessage = res.message; }
-                else { logLine('APP_EVENT', `Probe Passed: ${res.message}`); }
-            } catch(e) {}
-        }
+        if (stdout) { try { const res = JSON.parse(stdout); if (res.status === 'Error') { success = false; errorMessage = res.message; } else { logLine('APP_EVENT', `Physical Move Verified: ${res.message}`); } } catch(e) {} }
         if (success) {
-            logLine('APP_EVENT', `Released success: ${entryId}`);
+            if (whitelistEntry) {
+                const wl = store.get('whitelist'); const stats = store.get('stats'); let addedValue = "";
+                if (whitelistEntry.type === 'email') { if (!wl.emails.includes(whitelistEntry.value)) { wl.emails.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
+                else if (whitelistEntry.type === 'ip') { if (!wl.ips.includes(whitelistEntry.value)) { wl.ips.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
+                else if (whitelistEntry.type === 'domain') { if (!wl.domains.includes(whitelistEntry.value)) { wl.domains.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
+                else if (whitelistEntry.type === 'combo') { const exists = wl.combos.some(c => c.ip === whitelistEntry.ip && c.domain === whitelistEntry.domain); if (!exists) { wl.combos.push({ ip: whitelistEntry.ip, domain: whitelistEntry.domain }); addedValue = `${whitelistEntry.domain}:${whitelistEntry.ip}`; } }
+                if (addedValue) { store.set('whitelist', wl); logLine('APP_EVENT', `Whitelist Updated: ${whitelistEntry.type.toUpperCase()} -> ${addedValue}`); }
+                const itemsToMove = [];
+                ['malicious', 'suspicious', 'spam'].forEach(cat => {
+                    const remaining = [];
+                    stats[cat].forEach(item => {
+                        let match = false;
+                        if (whitelistEntry.type === 'email' && item.sender === whitelistEntry.value) match = true;
+                        else if (whitelistEntry.type === 'ip' && item.ip === whitelistEntry.value) match = true;
+                        else if (whitelistEntry.type === 'domain' && item.domain === whitelistEntry.value) match = true;
+                        else if (whitelistEntry.type === 'combo' && item.ip === whitelistEntry.ip && item.domain === whitelistEntry.domain) match = true;
+                        else if (item.entryId === entryId) match = true;
+                        if (match) { item.action = "Restored & Whitelisted"; item.tier = `User Action: ${whitelistEntry.type.toUpperCase()}`; itemsToMove.push(item); }
+                        else { remaining.push(item); }
+                    });
+                    stats[cat] = remaining;
+                });
+                itemsToMove.forEach(item => { if (!stats.clean.some(c => c.entryId === item.entryId)) stats.clean.push(item); });
+                store.set('stats', stats); if (mainWindow) mainWindow.webContents.send('stats-update', stats);
+            }
+            logLine('APP_EVENT', `Release transaction completed: ${entryId.substring(0,10)}...`);
             event.reply('email-released-success', entryId);
         } else {
-            logLine('RELEASE_ERROR', `Verification Failed: ${errorMessage || error.message}`);
-            event.reply('email-released-error', { entryId, message: errorMessage || "Outlook synchronization error" });
+            logLine('RELEASE_ERROR', `Physical Restore Blocked: ${errorMessage || error.message}`);
+            event.reply('email-released-error', { entryId, message: errorMessage || "Outlook blocked the move operation. Is the item open in another window?" });
         }
     });
 });
