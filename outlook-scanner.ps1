@@ -198,7 +198,8 @@ try {
             $R = $S.GetRootFolder(); $stack = New-Object System.Collections.Generic.Stack[object]; $stack.Push($R)
             while ($stack.Count -gt 0) {
                 $p = $stack.Pop(); 
-                if ($p.Name -eq "Junk Email" -or $p.Name -eq "Deleted Items") { Release-Com -Object $p; continue }
+                $n = $p.Name
+                if ($n -eq "Junk Email" -or $n -eq "Deleted Items" -or $n -eq "Sync Issues" -or $n -eq "Conflicts" -or $n -eq "Local Failures" -or $n -eq "Server Failures") { Release-Com -Object $p; continue }
                 [void]$tf.Add($p)
                 try { $fs = $p.Folders; foreach ($f in $fs) { $stack.Push($f) }; Release-Com -Object $fs } catch {}
             }; Release-Com -Object $R
@@ -211,104 +212,157 @@ try {
     $AnalysisScript = {
         param($meta, $ru, $sk, $wl, $bl, $Vk, $Pm)
         $sc = 0.0; $hits = New-Object System.Collections.Generic.List[string]; $IP = $meta.ip; $Se = $meta.sender; $Do = $meta.domain; $Hs = $meta.headers; $by = $meta.body; $Su = $meta.subject
-        if ($bl.emails -contains $Se -or $bl.ips -contains $IP -or $bl.domains -contains $Do) { return @{ score = 100; verdict = "SPAM (Blacklisted)"; hits = "BLACKLIST" } }
+        $combo = "$IP|$Do"
+        if ($bl.emails -contains $Se -or $bl.ips -contains $IP -or $bl.domains -contains $Do -or $bl.combos -contains $combo) { return @{ score = 100; verdict = "SPAM (Blacklisted)"; hits = "BLACKLIST" } }
         $W = $ru.weights; $T = $ru.toggles
-        if ($T.rbl -and $IP -ne "N/A") {
+        if ($T.rbl -and $IP -ne "N/A" -and $IP -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") {
             $isRBL = $false
-            foreach ($rbl in @("zen.spamhaus.org", "bl.spamcop.net")) {
-                try { $rev = ($IP -split "\.")[3..0] -join "."; $d = Resolve-DnsName -Name "$rev.$rbl" -Type A -TimeoutMs 1000 -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true; break } } catch {}
+            foreach ($rbl in @("zen.spamhaus.org", "bl.spamcop.net", "b.barracudacentral.org")) {
+                try { $rev = ($IP -split "\.")[3..0] -join "."; $d = Resolve-DnsName -Name "$rev.$rbl" -Type A -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true; break } } catch {}
             }
             if (!$isRBL -and $Do -and $Do -ne "unknown") {
-                try { $d = Resolve-DnsName -Name "$Do.dbl.spamhaus.org" -Type A -TimeoutMs 1000 -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true } } catch {}
+                try { $d = Resolve-DnsName -Name "$Do.dbl.spamhaus.org" -Type A -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true } } catch {}
             }
-            if ($isRBL) { $sc += ($W.rbl / 10.0); [void]$hits.Add("REPUTATION_RBL") }
+            if ($isRBL) { $sc += ($W.rbl / 10.0); [void]$hits.Add("RBL_REPUTATION") }
         }
-        if ($T.dmarc -and $Hs -match "dmarc=fail") { $sc += ($W.dmarc / 10.0); [void]$hits.Add("DMARC") }
-        if ($T.dkim -and $Hs -match "dkim=fail") { $sc += ($W.dkim / 10.0); [void]$hits.Add("DKIM") }
-        if ($T.spf -and $Hs -match "spf=fail") { $sc += ($W.spf / 10.0); [void]$hits.Add("SPF") }
-        if ($T.rdns -and $IP -ne "N/A") { try { $ptr = [System.Net.Dns]::GetHostEntry($IP).HostName; if ($ptr -and $Do -and $ptr -notmatch [regex]::Escape($Do)) { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS") } } catch {} }
-        if ($T.alignment -and $Hs -match "Return-Path: <(?<v>.*?)>") { if ($Se -ne $Matches['v']) { $sc += ($W.alignment / 10.0); [void]$hits.Add("ALIGNMENT") } }
-        if ($T.heuristics) { foreach ($kw in $sk) { if ($Su.IndexOf($kw, 4) -ge 0) { $sc += ($W.heuristics / 10.0); [void]$hits.Add("HEURISTICS"); break } } }
-        if ($T.body -and ($by -match "<script" -or $by -match "display:none")) { $sc += ($W.body / 10.0); [void]$hits.Add("BODY_ENTROPY") }
+
+        # Advanced Header Inspection
+        if ($T.dmarc -and ($Hs -match "dmarc=(fail|none)" -or $Hs -match "Authentication-Results:.*?dmarc=fail")) { $sc += ($W.dmarc / 10.0); [void]$hits.Add("DMARC_FAIL") }
+        if ($T.dkim -and ($Hs -match "dkim=(fail|none)" -or $Hs -match "Authentication-Results:.*?dkim=fail")) { $sc += ($W.dkim / 10.0); [void]$hits.Add("DKIM_FAIL") }
+        if ($T.spf -and ($Hs -match "spf=(fail|softfail|none)" -or $Hs -match "Authentication-Results:.*?spf=fail")) { $sc += ($W.spf / 10.0); [void]$hits.Add("SPF_FAIL") }
+
+        if ($T.rdns -and $IP -ne "N/A" -and $IP -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") { 
+            try { 
+                $ptr = [System.Net.Dns]::GetHostEntry($IP).HostName; 
+                if (!$ptr -or ($Do -and $ptr -notmatch [regex]::Escape($Do))) { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_MISMATCH") } 
+            } catch { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_MISSING") } 
+        }
+
+        if ($T.alignment -and $Hs -match "Return-Path:.*?<(?<v>.*?)>") { 
+            $rp = $Matches['v']; if ($Se -and $rp -and $Se.ToLower() -ne $rp.ToLower()) { $sc += ($W.alignment / 10.0); [void]$hits.Add("SENDER_ALIGNMENT") } 
+        }
+
+        if ($T.heuristics -and ![string]::IsNullOrEmpty($Su)) { 
+            foreach ($kw in $sk) { 
+                if ($Su.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { 
+                    $sc += ($W.heuristics / 10.0); [void]$hits.Add("SUBJECT_HEURISTICS"); break 
+                } 
+            } 
+        }
+
+        if ($T.body -and ($by -match "<script" -or $by -match "display:\s*none" -or $by -match "visibility:\s*hidden" -or $by -match "font-size:\s*0")) { 
+            $sc += ($W.body / 10.0); [void]$hits.Add("BODY_ENTROPY") 
+        }
         $mv = "CLEAN"
+        if ($sc -ge $ru.threshold) { $mv = "SPAM (Heuristics)" }
+
         if (![string]::IsNullOrEmpty($Vk)) { try { $u = "https://www.virustotal.com/api/v3/files/$($meta.bodySha256)"; $h = @{ "x-apikey" = $Vk }; $r = Invoke-RestMethod -Uri $u -Headers $h -Method Get -TimeoutSec 5; if ($r.data.attributes.last_analysis_stats.malicious -gt 0) { $mv = "MALWARE (VT)"; [void]$hits.Add("REPUTATION_ENGINE") } } catch {} }
-        if ($mv -eq "CLEAN" -and -not $Pm) { try { $d = Resolve-DnsName -Name "$($meta.bodyMd5).malware.hash.cymru.com" -Type TXT -TimeoutMs 2000 -ErrorAction SilentlyContinue; if ($d.Strings -match "127\.0\.0\.2") { $mv = "MALWARE (Hash DB)"; [void]$hits.Add("REPUTATION_ENGINE") } } catch {} }
+        if ($mv -eq "CLEAN" -and -not $Pm) { try { $d = Resolve-DnsName -Name "$($meta.bodyMd5).malware.hash.cymru.com" -Type TXT -ErrorAction SilentlyContinue; if ($d.Strings -match "127\.0\.0\.2") { $mv = "MALWARE (Hash DB)"; [void]$hits.Add("REPUTATION_ENGINE") } } catch {} }
         return @{ score = $sc; verdict = $mv; hits = [string]::Join(", ", $hits) }
-    }
+        }
 
-    $shaProvider = [System.Security.Cryptography.SHA256]::Create(); $md5Provider = [System.Security.Cryptography.MD5]::Create()
-    $stType = if ($Rm -eq "OnAccess") { "ON-ACCESS" } else { "ON-DEMAND" }
+        $shaProvider = [System.Security.Cryptography.SHA256]::Create(); $md5Provider = [System.Security.Cryptography.MD5]::Create()
+        $stType = if ($Rm -eq "OnAccess") { "ON-ACCESS" } else { "ON-DEMAND" }
 
-    for ($idx = 0; $idx -lt $tf.Count; $idx++) {
-        $f = $tf[$idx]; $Ai = $null; $Is = $null; 
+        $MaxThreads = 8; if ($env:NUMBER_OF_PROCESSORS -lt $MaxThreads) { $MaxThreads = $env:NUMBER_OF_PROCESSORS }
+        $Pool = [RunspaceFactory]::CreateRunspacePool(1, $MaxThreads); $Pool.Open(); $Tasks = New-Object System.Collections.Generic.List[object]
+
+        function Process-Task-Queue {
+        param($force = $false)
+        while ($Tasks.Count -gt 0) {
+            $completedIndices = New-Object System.Collections.Generic.List[int]
+            for ($ti = 0; $ti -lt $Tasks.Count; $ti++) {
+                if ($Tasks[$ti].handle.IsCompleted) { [void]$completedIndices.Add($ti) }
+            }
+
+            if ($completedIndices.Count -gt 0) {
+                foreach ($ci in ($completedIndices | Sort-Object -Descending)) {
+                    $task = $Tasks[$ci]
+                    $res = $task.instance.EndInvoke($task.handle); $m = $task.meta; $I = $null; try { $I = $N.GetItemFromID($m.id) } catch {}
+                    if ($null -ne $I) {
+                        $St = $I.Parent.Store
+                        if ($res.verdict -ne "CLEAN") {
+                            $Tgt = $St.GetDefaultFolder(23); $Quar = Robust-Move -item $I -targetFolder $Tgt
+                            if ($null -ne $Quar) { Send-Status -status "SPAM FILTERED" -details $m.subject -verdict "Spam" -action "Quarantined" -entryId $Quar.EntryID -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier $res.hits -unread $m.unread -scanType $stType -to $task.to -cc $task.cc; Release-Com -Object $Quar }
+                            Release-Com -Object $Tgt
+                        } else { Send-Status -status "Finished" -details $m.subject -verdict "Safe" -entryId $m.id -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier "" -unread $m.unread -scanType $stType -to $task.to -cc $task.cc }
+                        Release-Com -Object $St; Release-Com -Object $I
+                    }
+                    $task.instance.Dispose(); [void]$Tasks.RemoveAt($ci)
+                }
+                if (!$force) { break }
+            } elseif (!$force) { break }
+
+            if ($force -and $Tasks.Count -gt 0) { Start-Sleep -Milliseconds 200 }
+        }
+        }
+
+        foreach ($S in $N.Stores) {
         try {
-            if ($f.DefaultItemType -ne 0) { continue }
-            $Ai = $f.Items; if ($Rm -eq "OnAccess") { try { $Is = $Ai.Restrict("[Unread] = true") } catch { $Is = $Ai } } else { $Is = $Ai }
-            $cnt = 0; try { $cnt = $Is.Count } catch {}
-            if ($cnt -eq 0) { continue }
-            for ($i = 1; $i -le $cnt; $i++) {
-                if ($ParentPid -gt 0 -and -not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { exit }
-                $t = $null; try { $t = $Is.Item($i) } catch {}
-                if ($null -eq $t) { continue }
+            $R = $S.GetRootFolder(); $stack = New-Object System.Collections.Generic.Stack[object]; $stack.Push($R)
+            while ($stack.Count -gt 0) {
+                $f = $stack.Pop(); 
+                $n = $f.Name
+                if ($n -eq "Junk Email" -or $n -eq "Deleted Items" -or $n -eq "Sync Issues" -or $n -eq "Conflicts" -or $n -eq "Local Failures" -or $n -eq "Server Failures") { Release-Com -Object $f; continue }
+                
+                # Process folder
                 try {
-                    if ($t.MessageClass -notlike "IPM.Note*") { continue }
-                    $Id = $t.EntryID; if ($Rm -eq "OnAccess" -and $ps.Contains($Id)) { continue }
-                    $Se = Get-Smtp -item $t -type "Sender"; if ([string]::IsNullOrWhiteSpace($Se)) { $Se = $t.SenderEmailAddress }; $Do = "unknown"; if ($Se -match "@") { $Do = $Se.Split('@')[-1] }
-                    $Su = $t.Subject; $curUnread = $t.UnRead; $pa = $t.PropertyAccessor; $Hs = ""; $IP = "N/A"
-                    try { $Hs = $pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001F"); if ([string]::IsNullOrWhiteSpace($Hs)) { $Hs = $pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001E") }; if ([string]::IsNullOrWhiteSpace($Hs)) { $Hs = $pa.GetProperty("PR_TRANSPORT_MESSAGE_HEADERS") } } catch {}
-                    if ([string]::IsNullOrWhiteSpace($Hs)) { try { $Hs = "From: $Se`r`nTo: $($t.To)`r`nSubject: $Su`r`nDate: $($t.ReceivedTime)" } catch {} }
-                    $ir = "(?:\d{1,3}\.){3}\d{1,3}"; $foundIps = @()
-                    $cleanHs = ""; $current = ""; foreach($line in ($Hs -split "`r`n")) { if($line -match "^[A-Za-z0-9-]+:") { if($current) { $cleanHs += $current + "`r`n" }; $current = $line } else { $current += " " + $line.Trim() } }; if($current){ $cleanHs += $current }
-                    if ($cleanHs -match "Authentication-Results-Original:.*?sender IP is (?<v>$ir)") { $foundIps += $Matches['v'] }
-                    if ($cleanHs -match "Authentication-Results:.*?designates (?<v>$ir)") { $foundIps += $Matches['v'] }
-                    if ($cleanHs -match "Received-SPF:.*?client-ip=(?<v>$ir)") { $foundIps += $Matches['v'] }
-                    if ($cleanHs -match "X-Originating-IP: \s*[\(\[]?(?<v>$ir)[\)\]]?") { $foundIps += $Matches['v'] }
-                    $lines = $cleanHs -split "`r`n"; for ($lnIdx = $lines.Count - 1; $lnIdx -ge 0; $lnIdx--) { $line = $lines[$lnIdx]; if ($line -match "^Received: from") { $mips = [regex]::Matches($line, $ir); foreach ($mip in $mips) { $v = $mip.Value; if ($v -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") { $foundIps += $v } } } }
-                    if ($foundIps.Count -gt 0) { $bestIp = $foundIps[0]; foreach ($cand in $foundIps) { if ($cand -ne "52.212.19.177") { $bestIp = $cand; break } }; $IP = $bestIp }
-                    $f_to = Resolve-Recipients -recips $t.Recipients | Where-Object { $_ -match "@" }; if ([string]::IsNullOrWhiteSpace($f_to)) { $f_to = $t.To }
-                    $f_cc = ""; try { $ccList = New-Object System.Collections.Generic.List[string]; foreach ($r in $t.Recipients) { if ($r.Type -eq 2) { $smtp = Resolve-Recipients -recips @($r); if ($smtp) { [void]$ccList.Add($smtp) } } }; $f_cc = [string]::Join("; ", $ccList) } catch {}
-                    $by = $t.Body; if ([string]::IsNullOrWhiteSpace($by)) { try { $html = $t.HTMLBody; if ($html) { $by = $html -replace "<[^>]+>"," " } } catch {} }
-                    $bBytes = [System.Text.Encoding]::UTF8.GetBytes($by); $bSha = [BitConverter]::ToString($shaProvider.ComputeHash($bBytes)).Replace("-","").ToLower(); $bMd5 = [BitConverter]::ToString($md5Provider.ComputeHash($bBytes)).Replace("-","").ToLower()
-                    if ($wl.emails -contains $Se -or $wl.ips -contains $IP -or $wl.domains -contains $Do) { Send-Status -status "Finished" -details "$Su" -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -fullHeaders $Hs -body $by -unread $curUnread -scanType $stType -to $f_to -cc $f_cc; continue }
-                    $meta = @{ id=$Id; subject=$Su; sender=$Se; domain=$Do; ip=$IP; headers=$Hs; body=$by; unread=$curUnread; bodySha256=$bSha; bodyMd5=$bMd5; originalFolder=$f.EntryID }
-                    $PSInstance = [PowerShell]::Create().AddScript($AnalysisScript).AddArgument($meta).AddArgument($ru).AddArgument($sk).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Pm); $PSInstance.RunspacePool = $Pool; [void]$Tasks.Add(@{ instance = $PSInstance; handle = $PSInstance.BeginInvoke(); meta = $meta; to = $f_to; cc = $f_cc })
-                    if ($Tasks.Count -ge ($MaxThreads * 2)) {
-                        while ($Tasks.Count -gt 0) {
-                            $task = $Tasks[0]; if ($task.handle.IsCompleted) {
-                                $res = $task.instance.EndInvoke($task.handle); $m = $task.meta; $I = $null; try { $I = $N.GetItemFromID($m.id) } catch {}
-                                if ($null -ne $I) {
-                                    $St = $I.Parent.Store
-                                    if ($res.verdict -ne "CLEAN") {
-                                        $Tgt = $St.GetDefaultFolder(23); $Quar = Robust-Move -item $I -targetFolder $Tgt
-                                        if ($null -ne $Quar) { Send-Status -status "SPAM FILTERED" -details $m.subject -verdict "Spam" -action "Quarantined" -entryId $Quar.EntryID -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier $res.hits -unread $m.unread -scanType $stType -to $task.to -cc $task.cc; Release-Com -Object $Quar }
-                                        Release-Com -Object $Tgt
-                                    } else { Send-Status -status "Finished" -details $m.subject -verdict "Safe" -entryId $m.id -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier "" -unread $m.unread -scanType $stType -to $task.to -cc $task.cc }
-                                    Release-Com -Object $St; Release-Com -Object $I
-                                }
-                                $task.instance.Dispose(); [void]$Tasks.RemoveAt(0)
-                            } else { Start-Sleep -Milliseconds 100; break }
+                    if ($f.DefaultItemType -eq 0) {
+                        $Ai = $f.Items; if ($Rm -eq "OnAccess") { try { $Is = $Ai.Restrict("[Unread] = true") } catch { $Is = $Ai } } else { $Is = $Ai }
+                        $cnt = 0; try { $cnt = $Is.Count } catch {}
+                        if ($cnt -gt 0) {
+                            for ($i = 1; $i -le $cnt; $i++) {
+                                if ($ParentPid -gt 0 -and -not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { exit }
+                                $t = $null; try { $t = $Is.Item($i) } catch {}
+                                if ($null -eq $t) { continue }
+                                try {
+                                    if ($t.MessageClass -notlike "IPM.Note*") { continue }
+                                    if ($t.MessageClass -match "IPM\.Note\.(Storage|Conflict|Schema)") { continue }
+
+                                    $Su = ""; try { $Su = $t.Subject } catch {}
+                                    if ($Su -match "^(Synchronization Log:|Modification Resolution)") { continue }
+
+                                    $Id = $t.EntryID; if ($ps.Contains($Id)) { continue }
+                                    $curUnread = $false; try { $curUnread = $t.UnRead } catch {}
+
+                                    try { $Hs = $pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001F"); if ([string]::IsNullOrWhiteSpace($Hs)) { $Hs = $pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001E") } } catch {}
+                                    if ([string]::IsNullOrWhiteSpace($Hs)) { try { $Hs = "From: $Se`r`nTo: $($t.To)`r`nSubject: $Su`r`nDate: $($t.ReceivedTime)" } catch {} }
+                                    $ir = "(?:\d{1,3}\.){3}\d{1,3}"; $foundIps = @()
+                                    $cleanHs = ""; $current = ""; foreach($line in ($Hs -split "`r`n")) { if($line -match "^[A-Za-z0-9-]+:") { if($current) { $cleanHs += $current + "`r`n" }; $current = $line } else { $current += " " + $line.Trim() } }; if($current){ $cleanHs += $current }
+                                    if ($cleanHs -match "Authentication-Results-Original:.*?sender IP is (?<v>$ir)") { $foundIps += $Matches['v'] }
+                                    if ($cleanHs -match "Authentication-Results:.*?designates (?<v>$ir)") { $foundIps += $Matches['v'] }
+                                    if ($cleanHs -match "Received-SPF:.*?client-ip=(?<v>$ir)") { $foundIps += $Matches['v'] }
+                                    if ($cleanHs -match "X-Originating-IP: \s*[\(\[]?(?<v>$ir)[\)\]]?") { $foundIps += $Matches['v'] }
+                                    $lines = $cleanHs -split "`r`n"; for ($lnIdx = $lines.Count - 1; $lnIdx -ge 0; $lnIdx--) { $line = $lines[$lnIdx]; if ($line -match "^Received: from") { $mips = [regex]::Matches($line, $ir); foreach ($mip in $mips) { $v = $mip.Value; if ($v -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") { $foundIps += $v } } } }
+                                    if ($foundIps.Count -gt 0) { $bestIp = $foundIps[0]; foreach ($cand in $foundIps) { if ($cand -ne "52.212.19.177") { $bestIp = $cand; break } }; $IP = $bestIp }
+                                    $f_to = Resolve-Recipients -recips $t.Recipients | Where-Object { $_ -match "@" }; if ([string]::IsNullOrWhiteSpace($f_to)) { $f_to = $t.To }
+                                    $f_cc = ""; try { $ccList = New-Object System.Collections.Generic.List[string]; foreach ($r in $t.Recipients) { if ($r.Type -eq 2) { $smtp = Resolve-Recipients -recips @($r); if ($smtp) { [void]$ccList.Add($smtp) } } }; $f_cc = [string]::Join("; ", $ccList) } catch {}
+                                    $by = $t.Body; if ([string]::IsNullOrWhiteSpace($by)) { try { $html = $t.HTMLBody; if ($html) { $by = $html -replace "<[^>]+>"," " } } catch {} }
+
+                                    # Truncate large fields
+                                    if ($by.Length -gt 10000) { $by = $by.Substring(0, 10000) }
+                                    if ($Hs.Length -gt 5000) { $Hs = $Hs.Substring(0, 5000) }
+
+                                    $bBytes = [System.Text.Encoding]::UTF8.GetBytes($by); $bSha = [BitConverter]::ToString($shaProvider.ComputeHash($bBytes)).Replace("-","").ToLower(); $bMd5 = [BitConverter]::ToString($md5Provider.ComputeHash($bBytes)).Replace("-","").ToLower()
+                                    $combo = "$IP|$Do"
+                                    if ($wl.emails -contains $Se -or $wl.ips -contains $IP -or $wl.domains -contains $Do -or $wl.combos -contains $combo) { Send-Status -status "Finished" -details "$Su" -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -fullHeaders $Hs -body $by -unread $curUnread -scanType $stType -to $f_to -cc $f_cc; continue }
+                                    $meta = @{ id=$Id; subject=$Su; sender=$Se; domain=$Do; ip=$IP; headers=$Hs; body=$by; unread=$curUnread; bodySha256=$bSha; bodyMd5=$bMd5; originalFolder=$f.EntryID }
+                                    $PSInstance = [PowerShell]::Create().AddScript($AnalysisScript).AddArgument($meta).AddArgument($ru).AddArgument($sk).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Pm); $PSInstance.RunspacePool = $Pool; [void]$Tasks.Add(@{ instance = $PSInstance; handle = $PSInstance.BeginInvoke(); meta = $meta; to = $f_to; cc = $f_cc })
+
+                                    if ($Tasks.Count -ge ($MaxThreads * 2)) { Process-Task-Queue }
+                                } catch {} finally { Release-Com -Object $t; Release-Com -Object $pa }
+                            }
                         }
                     }
-                } catch {} finally { Release-Com -Object $t; Release-Com -Object $pa }
-            }
-        } finally { Release-Com -Object $Is; Release-Com -Object $Ai; Release-Com -Object $f }
-    }
-    while ($Tasks.Count -gt 0) {
-        $task = $Tasks[0]; if ($task.handle.IsCompleted) {
-            $res = $task.instance.EndInvoke($task.handle); $m = $task.meta; try { $I = $N.GetItemFromID($m.id) } catch { $I = $null }
-            if ($null -ne $I) {
-                $St = $I.Parent.Store
-                if ($res.verdict -ne "CLEAN") {
-                    $Tgt = $St.GetDefaultFolder(23); $Quar = Robust-Move -item $I -targetFolder $Tgt
-                    if ($null -ne $Quar) { Send-Status -status "SPAM FILTERED" -details $m.subject -verdict "Spam" -action "Quarantined" -entryId $Quar.EntryID -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier $res.hits -unread $m.unread -scanType $stType -to $task.to -cc $task.cc; Release-Com -Object $Quar }
-                    Release-Com -Object $Tgt
-                } else { Send-Status -status "Finished" -details $m.subject -verdict "Safe" -entryId $m.id -sender $m.sender -ip $m.ip -domain $m.domain -originalFolder $m.originalFolder -fullHeaders $m.headers -body $m.body -tier "" -unread $m.unread -scanType $stType -to $task.to -cc $task.cc }
-                Release-Com -Object $St; Release-Com -Object $I
-            }
-            $task.instance.Dispose(); [void]$Tasks.RemoveAt(0)
-        } else { Start-Sleep -Milliseconds 100 }
-    }
-} finally { 
+                } catch {} finally { Release-Com -Object $Is; Release-Com -Object $Ai }
+
+                try { $fs = $f.Folders; foreach ($sub in $fs) { $stack.Push($sub) }; Release-Com -Object $fs } catch {}
+                Release-Com -Object $f
+            }; Release-Com -Object $R
+        } catch {} finally { Release-Com -Object $S }
+        }
+
+        Process-Task-Queue -force $true} finally { 
     if ($null -ne $Pool) { $Pool.Dispose() }
     if ($null -ne $shaProvider) { $shaProvider.Dispose() }
     if ($null -ne $md5Provider) { $md5Provider.Dispose() }

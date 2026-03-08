@@ -17,12 +17,11 @@ const isServiceMode = process.argv.includes('--service');
 
 function cleanupZombies() {
     if (isServiceMode) return;
-    try {
-        const myPid = process.pid;
-        const myPath = process.execPath.replace(/\\/g, '\\\\');
-        const cmd = `Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ${myPid} -and $_.Path -eq '${myPath}' } | ForEach-Object { $p = $_; $isChild = Get-WmiObject Win32_Process -Filter "ProcessId=$($p.Id)" | Where-Object { $_.ParentProcessId -eq ${myPid} }; if (-not $isChild) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }`;
-        execSync(`powershell -NoProfile -Command "${cmd}"`, { windowsHide: true });
-    } catch {}
+    const myPid = process.pid;
+    const myName = path.basename(process.execPath, '.exe');
+    const myPath = process.execPath.replace(/\\/g, '\\\\');
+    const cmd = `Get-Process ${myName} -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ${myPid} -and $_.Path -eq '${myPath}' } | ForEach-Object { $p = $_; $isChild = Get-WmiObject Win32_Process -Filter "ProcessId=$($p.Id)" | Where-Object { $_.ParentProcessId -eq ${myPid} }; if (-not $isChild) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }`;
+    spawn('powershell', ['-NoProfile', '-Command', cmd], { windowsHide: true, detached: true, stdio: 'ignore' }).unref();
 }
 
 if (!isServiceMode) {
@@ -59,7 +58,7 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 fs.appendFileSync(DEBUG_LOG_PATH, `[${new Date().toISOString()}] [TRACE] Main script execution started. Mode: ${process.argv.includes('--service') ? 'SERVICE' : 'UI'}\n`);
 
 const MAX_LOG_SIZE = 5242880;
-const SHARED_DATA_PATH = 'C:\\ProgramData\\MicrosoftOutlookSecurity';
+const SHARED_DATA_PATH = path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'MicrosoftOutlookSecurity');
 const SERVICE_LEASE_PATH = path.join(SHARED_DATA_PATH, 'service.lease');
 const STORE_LOCK_PATH = path.join(SHARED_DATA_PATH, 'config.lock');
 const CONFIG_FILE_PATH = path.join(SHARED_DATA_PATH, 'config.json');
@@ -107,6 +106,14 @@ let outlookStatusInterval = null;
 let serviceWatchdogInterval = null;
 let uiStatsInterval = null;
 let storeWriteQueue = Promise.resolve();
+const forensicCache = new Map();
+const FORENSICS_DIR = path.join(APP_ROOT, 'logs', 'forensics');
+if (!fs.existsSync(FORENSICS_DIR)) { try { fs.mkdirSync(FORENSICS_DIR, { recursive: true }); } catch {} }
+
+function getForensicFilePath(id) {
+    const hash = crypto.createHash('sha256').update(String(id)).digest('hex');
+    return path.join(FORENSICS_DIR, `${hash}.json`);
+}
 
 function ensureConfigIntegrity() {
     try { fs.mkdirSync(SHARED_DATA_PATH, { recursive: true }); } catch {}
@@ -121,12 +128,13 @@ ensureConfigIntegrity();
 const Store = require('electron-store');
 const store = new Store({
     cwd: SHARED_DATA_PATH, name: 'config', clearInvalidConfig: true,
-    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, totals: { spam: 0, safe: 0, malicious: 0, suspicious: 0 }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, weights: { dmarc: 20, alignment: 10, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 9, rbl: 20 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, blacklist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
+    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, totals: { spam: 0, safe: 0, malicious: 0, suspicious: 0 }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, blacklist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
+
 });
 
 const rubrics = store.get('rubrics');
-if (rubrics && rubrics.weights && (rubrics.weights.dmarc === 22 || !rubrics.weights.rbl)) {
-    rubrics.weights = { dmarc: 20, alignment: 10, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 9, rbl: 20 };
+if (rubrics && rubrics.weights && (rubrics.weights.alignment === 15 || rubrics.weights.dmarc === 20 || rubrics.weights.dmarc === 22 || !rubrics.weights.rbl)) {
+    rubrics.weights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 };
     rubrics.toggles.rbl = true;
     store.set('rubrics', rubrics);
 }
@@ -199,10 +207,7 @@ async function safeStoreUpdate(mutator) {
             await forceReloadStore();
             const snap = JSON.parse(JSON.stringify(store.store || {}));
             await mutator(snap);
-            const tmp = `${store.path}.${process.pid}.${Date.now()}.tmp`;
-            await fsPromises.writeFile(tmp, JSON.stringify(snap), 'utf8');
-            await fsPromises.rename(tmp, store.path);
-            store.store = snap;
+            store.set(snap); 
             return true;
         } catch (e) { await logLine('STORE_ERROR', e.message, true); return false; }
         finally { await release(); }
@@ -349,6 +354,18 @@ async function startServiceWatchdog() {
         if (isScanning && now - lastHeartbeat > 300000) { await cleanupProcesses(); isScanning = false; }
         if (!isScanning) {
             await forceReloadStore();
+            
+            const sched = store.get('schedule');
+            if (sched && sched.enabled && sched.datetime) {
+                const target = new Date(sched.datetime).getTime();
+                if (!isNaN(target) && now >= target && now - target < 60000) {
+                    await logLine('SCHEDULE', 'Triggering scheduled audit scan.');
+                    await safeStoreSet('schedule', { ...sched, enabled: false });
+                    runOutlookScanner('FullScan');
+                    return;
+                }
+            }
+
             if (store.get('enabled') && now - (store.get('lastScanStartTime') || 0) > 300000) runOutlookScanner(store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess');
         }
     }, 15000);
@@ -455,7 +472,16 @@ async function runOutlookScanner(mode = 'OnAccess') {
             const line = out.slice(0, idx).trim(); out = out.slice(idx + 1); idx = out.indexOf('\n'); if (!line) continue;
             const p = safeJsonParse(line); if (!p) continue;
             if (p.type === 'heartbeat') { lastHeartbeat = Date.now(); continue; }
-            const r = sanitizeScannerResult(p); const uiP = { ...r }; delete uiP.fullHeaders; delete uiP.body; broadcastToUi({ type: 'scan-update', data: uiP });
+            const r = sanitizeScannerResult(p); 
+            
+            if (r.entryId) {
+                const fData = { fullHeaders: r.fullHeaders, body: r.body };
+                forensicCache.set(r.entryId, fData);
+                if (forensicCache.size > 1000) { const firstKey = forensicCache.keys().next().value; forensicCache.delete(firstKey); }
+                fs.writeFile(getForensicFilePath(r.entryId), JSON.stringify(fData), () => {});
+            }
+
+            const uiP = { ...r }; delete uiP.fullHeaders; delete uiP.body; broadcastToUi({ type: 'scan-update', data: uiP });
             if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'CAUTION'].includes(r.status)) {
                 if (!r.entryId) continue;
                 await safeStoreUpdate(s => {
@@ -474,8 +500,7 @@ async function runOutlookScanner(mode = 'OnAccess') {
                     if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
                     s.totals[cat] = (s.totals[cat] || 0) + 1;
 
-                    const hMeta = summarizeEvidence(r.fullHeaders); const bMeta = summarizeEvidence(r.body);
-                    s.stats[cat].push({ subject: r.details, date: r.timestamp, entryId: r.entryId, sender: r.sender, ip: r.ip, domain: r.domain, originalFolder: r.originalFolder, score: r.score, action: r.action, tier: r.tier, fullHeaders: r.fullHeaders, body: r.body, unread: r.unread, scanType: r.scanType, to: r.to, cc: r.cc, headerHash: hMeta.hash, headerSize: hMeta.size, bodyHash: bMeta.hash, bodySize: bMeta.size });
+                    s.stats[cat].push({ subject: r.details, date: r.timestamp, entryId: r.entryId, sender: r.sender, ip: r.ip, domain: r.domain, originalFolder: r.originalFolder, score: r.score, action: r.action, tier: r.tier, unread: r.unread, scanType: r.scanType, to: r.to, cc: r.cc });
                     if (s.stats[cat].length > 1000) s.stats[cat] = s.stats[cat].slice(-1000);
                 });
                 await logLine('AUDIT', `[${r.scanType}] [${r.verdict}] ${r.details}`);
@@ -483,8 +508,16 @@ async function runOutlookScanner(mode = 'OnAccess') {
         }
     });
     child.stderr.on('data', d => { err += d.toString(); if (err.length > 12000) err = err.slice(-12000); });
-    child.on('error', async e => { isScanning = false; currentScanChild = null; await logLine('SCAN_ERROR', e.message, true); });
-    child.on('exit', async () => { isScanning = false; currentScanChild = null; if (err.trim()) await logLine('SCAN_STDERR', err.trim(), true); });
+    child.on('error', async e => { 
+        isScanning = false; currentScanChild = null; 
+        if (scanWatchdogTimer) { clearTimeout(scanWatchdogTimer); scanWatchdogTimer = null; }
+        await logLine('SCAN_ERROR', e.message, true); 
+    });
+    child.on('exit', async () => { 
+        isScanning = false; currentScanChild = null; 
+        if (scanWatchdogTimer) { clearTimeout(scanWatchdogTimer); scanWatchdogTimer = null; }
+        if (err.trim()) await logLine('SCAN_STDERR', err.trim(), true); 
+    });
 }
 
 function createTray() {
@@ -506,7 +539,7 @@ function createWindow() {
     mainWindow.once('ready-to-show', () => { 
         if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
         syncProtectionStatus(!!store.get('enabled'));
-        uiStatsInterval = setInterval(async () => { if (mainWindow) { await forceReloadStore(); mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); } }, 5000); 
+        uiStatsInterval = setInterval(async () => { if (mainWindow && mainWindow.isVisible()) { await forceReloadStore(); mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); } }, 5000); 
     });
 }
 
@@ -587,7 +620,35 @@ ipcMain.handle('set-blacklist', async (e, b) => { return await safeStoreSet('bla
 ipcMain.handle('set-schedule', async (e, s) => { return await safeStoreSet('schedule', s) ? { ok: true } : { ok: false }; });
 ipcMain.handle('save-column-widths', async (e, w) => { return await safeStoreSet('columnWidths', w) ? { ok: true } : { ok: false }; });
 ipcMain.handle('open-logs-folder', async () => { const r = await shell.openPath(LOG_DIR); return r ? { ok: false } : { ok: true }; });
-ipcMain.handle('clear-security-cache', async () => { if (await safeStoreSet('processedIds', [])) await logLine('SVC', 'Cache cleared'); return { ok: true }; });
+ipcMain.handle('get-forensics', async (e, id) => {
+    if (!id) return { fullHeaders: 'No ID provided.', body: 'No ID provided.' };
+    if (forensicCache.has(id)) return forensicCache.get(id);
+    const fPath = getForensicFilePath(id);
+    if (fs.existsSync(fPath)) {
+        try {
+            const data = await fsPromises.readFile(fPath, 'utf8');
+            const parsed = JSON.parse(data);
+            forensicCache.set(id, parsed);
+            return parsed;
+        } catch {}
+    }
+    return { fullHeaders: 'Forensic details unavailable for this historical item.', body: 'Forensic details unavailable for this historical item.' };
+});
+
+ipcMain.handle('clear-security-cache', async () => { 
+    await safeStoreUpdate(s => { 
+        s.processedIds = []; 
+        s.stats = { spam: [], safe: [], malicious: [], suspicious: [] }; 
+        s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
+    }); 
+    forensicCache.clear();
+    try {
+        const files = fs.readdirSync(FORENSICS_DIR);
+        for (const file of files) fs.unlinkSync(path.join(FORENSICS_DIR, file));
+    } catch {}
+    await logLine('SVC', 'Cache and history cleared'); 
+    return { ok: true }; 
+});
 ipcMain.handle('app-reset', async () => { await safeStoreUpdate(s => { for (const k in s) delete s[k]; }); app.relaunch(); setTimeout(() => shutdown(0), 100); return { ok: true }; });
 ipcMain.handle('backup-config', async () => { await forceReloadStore(); const c = store.store; const d = await dialog.showSaveDialog(mainWindow, { title: 'Export', defaultPath: path.join(app.getPath('downloads'), 'config.json') }); if (!d.filePath) return false; await fsPromises.writeFile(d.filePath, JSON.stringify(c, null, 2), 'utf8'); return true; });
 ipcMain.handle('restore-config', async () => { const d = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] }); if (!d.filePaths[0]) return false; try { const data = safeJsonParse(await fsPromises.readFile(d.filePaths[0], 'utf8')); if (data) { await safeStoreMerge(data); app.relaunch(); await shutdown(0); return true; } } catch {} return false; });
@@ -614,7 +675,18 @@ ipcMain.handle('release-email', async (e, d) => {
                 const logMsg = `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status} - ${p.message}`;
                 logLine('RELEASE', logMsg);
                 if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.send('live-log', logMsg); if (p.status === 'Finished' || p.status === 'Error') { mainWindow.webContents.send('email-released', { ok: p.ok, entryId: p.entryId, message: p.message }); } }
-                if (p.status === 'Finished' && p.ok) { await safeStoreUpdate(s => { for (const cat in s.stats) { const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[cat].splice(idx, 1); break; } } }); }
+                if (p.status === 'Finished' && p.ok) {
+                    await safeStoreUpdate(s => {
+                        if (p.newEntryId && !s.processedIds.includes(p.newEntryId)) {
+                            s.processedIds.push(p.newEntryId);
+                            if (s.processedIds.length > 5000) s.processedIds = s.processedIds.slice(-5000);
+                        }
+                        for (const cat in s.stats) {
+                            const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId);
+                            if (idx !== -1) { s.stats[cat].splice(idx, 1); break; }
+                        }
+                    });
+                }
             }
         }
     });
@@ -644,7 +716,26 @@ ipcMain.handle('quarantine-email', async (e, d) => {
                 const logMsg = `[QUARANTINE] Item ${p.entryId.substring(0,8)}: ${p.status} - ${p.message}`;
                 logLine('QUARANTINE', logMsg);
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('live-log', logMsg);
-                if (p.status === 'Finished' && p.newEntryId) { await safeStoreUpdate(s => { for (const cat in s.stats) { const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[cat][idx].entryId = p.newEntryId; s.stats[cat][idx].action = 'Quarantined'; if (!s.processedIds.includes(p.newEntryId)) s.processedIds.push(p.newEntryId); break; } } }); }
+                if (p.status === 'Finished' && p.ok) {
+                    await safeStoreUpdate(s => {
+                        let item = null; let oldCat = '';
+                        for (const c in s.stats) {
+                            const idx = s.stats[c].findIndex(it => it.entryId === p.entryId);
+                            if (idx !== -1) { item = s.stats[c].splice(idx, 1)[0]; oldCat = c; break; }
+                        }
+                        if (item) {
+                            item.entryId = p.newEntryId || item.entryId;
+                            item.action = 'Quarantined';
+                            if (!s.stats.spam) s.stats.spam = [];
+                            s.stats.spam.push(item);
+                            if (s.stats.spam.length > 1000) s.stats.spam = s.stats.spam.slice(-1000);
+                            if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
+                            if (oldCat) s.totals[oldCat] = Math.max(0, (s.totals[oldCat] || 0) - 1);
+                            s.totals.spam = (s.totals.spam || 0) + 1;
+                            if (p.newEntryId && !s.processedIds.includes(p.newEntryId)) s.processedIds.push(p.newEntryId);
+                        }
+                    });
+                }
             }
         }
     });

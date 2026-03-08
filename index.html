@@ -57,6 +57,7 @@
   </style>
 </head>
 <body>
+  <div id="toast" class="toast">COPIED TO CLIPBOARD</div>
   <div id="tooltip"></div>
   <header class="header">
     <div class="logo">
@@ -260,21 +261,23 @@
     let lastSelectedIndex = -1;
     let lastRenderedJson = "";
     let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
-    let currentWeights = { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 };
-    let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true };
+    let currentWeights = { dmarc: 20, alignment: 15, dkim: 10, spf: 20, rdns: 10, body: 10, heuristics: 10, rbl: 25 };
+    let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true };
     let tooltipTimer = null;
+    let currentDetailEntryId = null;
 
     function renderSensitivityUI() {
         const container = document.getElementById('sensitivity-container');
-        const labels = { dmarc: 'DMARC Compliance', alignment: 'Sender Alignment', dkim: 'DKIM Integrity', spf: 'SPF Authorization', rdns: 'Reverse DNS (PTR)', body: 'Body/Payload Entropy', heuristics: 'Heuristic Hooks' };
+        const labels = { dmarc: 'DMARC Compliance', alignment: 'Sender Alignment', dkim: 'DKIM Integrity', spf: 'SPF Authorization', rdns: 'Reverse DNS (PTR)', body: 'Body/Payload Entropy', heuristics: 'Heuristic Hooks', rbl: 'RBL Reputation' };
         const tips = {
-            dmarc: "DMARC checks sender rules.",
-            alignment: "Alignment checks envelope vs body.",
-            dkim: "DKIM checks digital stamps.",
-            spf: "SPF checks authorized trucks.",
-            rdns: "RDNS checks internet ID cards.",
-            body: "Body entropy scans for hidden code.",
-            heuristics: "Heuristics scans for scam words."
+            dmarc: "This engine checks if the sender has special 'rules' set up to prove who they are. You should use it to catch advanced fakes. Avoid it only if you get too many 'false alarms' from companies that haven't set their rules correctly.",
+            alignment: "This checks if the name on the envelope matches the name on the letter inside. Use it to stop scammers from pretending to be your boss. Avoid it if you receive many legitimate automated reports that look slightly different.",
+            dkim: "This is like a digital wax seal on the email. Use it to make sure the email wasn't changed by a middle-man. It's very safe to keep on all the time.",
+            spf: "This checks if the email was sent from a 'valid post office' authorized by the sender. Use it to block random strangers from using a famous company's name. It's a foundational security layer.",
+            rdns: "This looks at the sender's 'Internet ID Card' to see if it's real or a cheap fake. Use it to block mass-mailing 'spam bots'. Avoid it only if your internet connection is very slow, as it takes a second to check.",
+            body: "This scans the inside of the email for 'hidden invisible text' or 'tricky code' used by hackers. Use it to find sneaky threats. Avoid it if you deal with complex technical emails that use strange formatting.",
+            heuristics: "This looks for 'Red Flag' words like 'Urgent', 'Winner', or 'Bitcoin'. Use it to catch classic scams. Avoid it if your job involves handling lots of invoices or prizes where these words are normal.",
+            rbl: "This is a global 'Watch List' of known bad guys on the internet. Use it to instantly block known scammers. It is extremely effective and should almost always be kept active."
         };
         container.innerHTML = Object.keys(currentWeights).map(key => {
             const val = currentWeights[key]; const isEnabled = currentToggles[key];
@@ -359,9 +362,12 @@
                 document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
             };
 
-            el.ondblclick = () => {
+            el.ondblclick = async () => {
                 const i = itemData;
                 if (!i) return;
+                currentDetailEntryId = i.entryId;
+                
+                const forensics = await api.getForensics(i.entryId);
                 const [d, t] = i.date.split(' ');
                 const engines = (i.tier || 'None').split(',').map(s => s.trim()).filter(Boolean);
                 const engineHtml = engines.length ? engines.map(eng => `<span style="background: rgba(142, 117, 255, 0.2); color: var(--accent); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; margin-right: 5px; display: inline-block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 0 8px rgba(142, 117, 255, 0.3);">[ ${eng} ]</span>`).join('') : '<span style="color:var(--muted)">None Detected</span>';
@@ -442,7 +448,7 @@
                 setCopy('copy-folder', i.originalFolder);
                 setCopy('copy-ip', i.ip || 'N/A');
 
-                document.getElementById('header-text').textContent = i.fullHeaders || "No header information available.";
+                document.getElementById('header-text').textContent = forensics.fullHeaders || "No header information available.";
                 detModal.style.display = 'flex';
             };
 
@@ -490,24 +496,24 @@
     }
 
     function addLog(msg) { const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
-    document.getElementById('copy-headers-icon').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); };
-    document.getElementById('read-email-btn').onclick = () => { 
-        const items = getSelectedItems();
-        if (!items.length) return;
-        const i = items[0];
+    document.getElementById('copy-headers-icon').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); showToast(); };
+    document.getElementById('read-email-btn').onclick = async () => { 
+        if (!currentDetailEntryId) return;
+        const forensics = await api.getForensics(currentDetailEntryId);
         const bodyText = document.getElementById('body-text'); 
         const bodyModal = document.getElementById('body-modal'); 
-        document.getElementById('body-subject').textContent = i.subject + (items.length > 1 ? ` (+ ${items.length-1} more)` : '');
-        bodyText.textContent = i.body || "No email content available."; 
-        bodyText.style.direction = /[\u0590-\u05FF]/.test(i.body || "") ? 'rtl' : 'ltr'; 
-        bodyText.style.textAlign = /[\u0590-\u05FF]/.test(i.body || "") ? 'right' : 'left'; 
+        const item = getSelectedItems().find(it => it.entryId === currentDetailEntryId);
+        document.getElementById('body-subject').textContent = item ? item.subject : 'Email Content';
+        bodyText.textContent = forensics.body || "No email content available."; 
+        bodyText.style.direction = /[\u0590-\u05FF]/.test(forensics.body || "") ? 'rtl' : 'ltr'; 
+        bodyText.style.textAlign = /[\u0590-\u05FF]/.test(forensics.body || "") ? 'right' : 'left'; 
         bodyModal.style.display = 'flex'; 
     };
     document.getElementById('close-body-btn').onclick = () => document.getElementById('body-modal').style.display = 'none';
     document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if (cfg.rubrics?.weights) currentWeights = { ...cfg.rubrics.weights }; if (cfg.rubrics?.toggles) currentToggles = { ...cfg.rubrics.toggles }; renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
     document.getElementById('reset-sensitivity-defaults').onclick = () => { 
-        currentWeights = { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 }; 
-        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true }; 
+        currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; 
+        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; 
         renderSensitivityUI(); 
         addLog("Sensitivity reset to new system defaults."); 
     };
@@ -520,8 +526,8 @@
     document.getElementById('save-schedule').onclick = () => { const enabled = document.getElementById('sched-enabled').checked; const datetime = document.getElementById('sched-datetime').value; if (enabled && !datetime) return; api.setSchedule({ enabled, datetime }); document.getElementById('schedule-modal').style.display = 'none'; addLog("Schedule updated."); };
     document.getElementById('close-schedule').onclick = () => document.getElementById('schedule-modal').style.display = 'none';
     document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
-    document.getElementById('close-details-btn').onclick = () => detModal.style.display = 'none';
-    document.getElementById('close-details-x').onclick = () => detModal.style.display = 'none';
+    document.getElementById('close-details-btn').onclick = () => { detModal.style.display = 'none'; currentDetailEntryId = null; };
+    document.getElementById('close-details-x').onclick = () => { detModal.style.display = 'none'; currentDetailEntryId = null; };
     document.getElementById('settings-btn').onclick = async () => { 
         const cfg = await api.getConfig(); 
         document.getElementById('vt-api-key').value = cfg.vtApiKey; 
@@ -539,6 +545,10 @@
     };
     document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display='none';
     document.getElementById('save-settings').onclick = async () => { 
+        let threshold = parseInt(document.getElementById('spam-threshold').value);
+        if (isNaN(threshold) || threshold < 1) threshold = 5;
+        if (threshold > 100) threshold = 100;
+
         const wl = { 
             emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v), 
             ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v), 
@@ -554,7 +564,7 @@
         api.setVTKey(document.getElementById('vt-api-key').value); 
         api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k)); 
         const cfg = await api.getConfig();
-        api.setRubrics({ ...cfg.rubrics, threshold: parseInt(document.getElementById('spam-threshold').value) }); 
+        api.setRubrics({ ...cfg.rubrics, threshold: threshold }); 
         api.setWhitelist(wl); 
         api.setBlacklist(bl);
         document.getElementById('settings-modal').style.display='none'; 
@@ -570,6 +580,17 @@
         const activeCat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
         const items = getSelectedItems();
         if (!items.length) return;
+        
+        // Instant UI feedback (Issue 8)
+        items.forEach(i => {
+            selectedIds.delete(i.entryId);
+            for (const cat in stats) {
+                const idx = stats[cat].findIndex(it => it.entryId === i.entryId);
+                if (idx !== -1) { stats[cat].splice(idx, 1); break; }
+            }
+        });
+        renderList();
+
         if (activeCat === 'safe') {
             addLog(`Marking ${items.length} items as SPAM...`);
             for (const i of items) {
@@ -578,7 +599,8 @@
                 else if (type === 'ip') blEntry = { type: 'ip', value: i.ip };
                 else if (type === 'domain') blEntry = { type: 'domain', value: i.domain };
                 else if (type === 'combo') blEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
-                api.quarantineEmail({ entryId: i.entryId, blacklistEntry: blEntry });
+                await api.quarantineEmail({ entryId: i.entryId, blacklistEntry: blEntry });
+                await new Promise(r => setTimeout(r, 100)); // Throttle to prevent DoS
             }
         } else {
             addLog(`Initiating bulk release for ${items.length} items...`);
@@ -588,7 +610,8 @@
                 else if (type === 'ip') wlEntry = { type: 'ip', value: i.ip };
                 else if (type === 'domain') wlEntry = { type: 'domain', value: i.domain };
                 else if (type === 'combo') wlEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
-                api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder, unread: i.unread });
+                await api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder, unread: i.unread });
+                await new Promise(r => setTimeout(r, 100)); // Throttle to prevent DoS
                 if (wlEntry) {
                     const toCascade = [];
                     ['malicious', 'suspicious', 'spam'].forEach(cat => {
@@ -604,7 +627,16 @@
                     });
                     if (toCascade.length > 0) {
                         addLog(`CASCADE: Automatically releasing ${toCascade.length} matching items...`);
-                        toCascade.forEach(c => { api.releaseEmail({ entryId: c.entryId, whitelistEntry: null, originalFolder: c.originalFolder, unread: c.unread }); });
+                        for (const c of toCascade) {
+                            // Instant UI feedback for cascade
+                            for (const cat in stats) {
+                                const idx = stats[cat].findIndex(it => it.entryId === c.entryId);
+                                if (idx !== -1) { stats[cat].splice(idx, 1); break; }
+                            }
+                            await api.releaseEmail({ entryId: c.entryId, whitelistEntry: null, originalFolder: c.originalFolder, unread: c.unread });
+                            await new Promise(r => setTimeout(r, 100)); // Throttle cascade
+                        }
+                        renderList();
                     }
                 }
             }

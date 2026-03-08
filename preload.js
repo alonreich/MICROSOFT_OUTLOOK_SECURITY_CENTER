@@ -34,5 +34,6 @@ contextBridge.exposeInMainWorld('securityApi', {
     onStatsUpdate: callback => ipcRenderer.on('stats-update', (event, data) => callback(data)),
     onLiveLog: callback => ipcRenderer.on('live-log', (event, message) => callback(message)),
     onEmailReleased: callback => ipcRenderer.on('email-released', (event, data) => callback(data)),
-    quarantineEmail: (data) => invoke('quarantine-email', data)
+    quarantineEmail: (data) => invoke('quarantine-email', data),
+    getForensics: (id) => invoke('get-forensics', id)
 });
