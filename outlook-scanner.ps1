@@ -261,7 +261,7 @@ try {
                                     
                                     # --- ANALYSIS (SEQUENTIAL, NO RUNSPACE POOL) ---
                                     if ($wl.emails -contains $Se -or $wl.ips -contains $IP -or $wl.domains -contains $Do -or $wl.combos -contains $combo) { 
-                                        Send-Status -status "Finished" -details "$Su" -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -fullHeaders $Hs -body $by -unread $curUnread -scanType $stType -to $f_to -cc $f_cc; continue 
+                                        Send-Status -status "Finished" -details "$Su" -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -fullHeaders $Hs -body $by -tier "Trusted (Whitelist)" -unread $curUnread -scanType $stType -to $f_to -cc $f_cc; continue 
                                     }
                                     
                                     $sc = 0.0; $hits = New-Object System.Collections.Generic.List[string]
@@ -269,7 +269,7 @@ try {
                                     $mv = "CLEAN"
                                     
                                     if ($isBlacklisted) {
-                                        $sc = 100; $mv = "SPAM (Blacklisted)"; [void]$hits.Add("BLACKLIST")
+                                        $sc = 100; $mv = "SPAM (Blacklisted)"; [void]$hits.Add("BLACKLIST_HIT")
                                     } else {
                                         $W = $ru.weights; $T = $ru.toggles
                                         if ($T.rbl -and $IP -ne "N/A" -and $IP -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") {
@@ -278,36 +278,40 @@ try {
                                                 try { $rev = ($IP -split "\.")[3..0] -join "."; $d = Resolve-DnsName -Name "$rev.$rbl" -Type A -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true; break } } catch {}
                                             }
                                             if (!$isRBL -and $Do -and $Do -ne "unknown") { try { $d = Resolve-DnsName -Name "$Do.dbl.spamhaus.org" -Type A -ErrorAction SilentlyContinue; if ($d) { $isRBL = $true } } catch {} }
-                                            if ($isRBL) { $sc += ($W.rbl / 10.0); [void]$hits.Add("RBL_REPUTATION") }
+                                            if ($isRBL) { $sc += ($W.rbl / 10.0); [void]$hits.Add("GLOBAL_RBL_HIT") }
                                         }
 
-                                        if ($T.dmarc -and ($Hs -match "dmarc=(fail|none)" -or $Hs -match "Authentication-Results:.*?dmarc=fail")) { $sc += ($W.dmarc / 10.0); [void]$hits.Add("DMARC_FAIL") }
-                                        if ($T.dkim -and ($Hs -match "dkim=(fail|none)" -or $Hs -match "Authentication-Results:.*?dkim=fail")) { $sc += ($W.dkim / 10.0); [void]$hits.Add("DKIM_FAIL") }
-                                        if ($T.spf -and ($Hs -match "spf=(fail|softfail|none)" -or $Hs -match "Authentication-Results:.*?spf=fail")) { $sc += ($W.spf / 10.0); [void]$hits.Add("SPF_FAIL") }
+                                        if ($T.dmarc -and ($Hs -match "dmarc=(fail|none)" -or $Hs -match "Authentication-Results:.*?dmarc=fail")) { $sc += ($W.dmarc / 10.0); [void]$hits.Add("DMARC_AUTH_FAIL") }
+                                        if ($T.dkim -and ($Hs -match "dkim=(fail|none)" -or $Hs -match "Authentication-Results:.*?dkim=fail")) { $sc += ($W.dkim / 10.0); [void]$hits.Add("DKIM_SIG_FAIL") }
+                                        if ($T.spf -and ($Hs -match "spf=(fail|softfail|none)" -or $Hs -match "Authentication-Results:.*?spf=fail")) { $sc += ($W.spf / 10.0); [void]$hits.Add("SPF_AUTH_FAIL") }
 
                                         if ($T.rdns -and $IP -ne "N/A" -and $IP -notmatch "^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|fe80|::1)") { 
-                                            try { $ptr = [System.Net.Dns]::GetHostEntry($IP).HostName; if (!$ptr -or ($Do -and $ptr -notmatch [regex]::Escape($Do))) { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_MISMATCH") } } catch { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_MISSING") } 
+                                            try { $ptr = [System.Net.Dns]::GetHostEntry($IP).HostName; if (!$ptr -or ($Do -and $ptr -notmatch [regex]::Escape($Do))) { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_NAME_MISMATCH") } } catch { $sc += ($W.rdns / 10.0); [void]$hits.Add("RDNS_RECORDS_MISSING") } 
                                         }
-                                        if ($T.alignment -and $Hs -match "Return-Path:.*?<(?<v>.*?)>") { $rp = $Matches['v']; if ($Se -and $rp -and $Se.ToLower() -ne $rp.ToLower()) { $sc += ($W.alignment / 10.0); [void]$hits.Add("SENDER_ALIGNMENT") } }
-                                        if ($T.heuristics -and ![string]::IsNullOrEmpty($Su)) { foreach ($kw in $sk) { if ($Su.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $sc += ($W.heuristics / 10.0); [void]$hits.Add("SUBJECT_HEURISTICS"); break } } }
-                                        if ($T.body -and ($by -match "<script" -or $by -match "display:\s*none" -or $by -match "visibility:\s*hidden" -or $by -match "font-size:\s*0")) { $sc += ($W.body / 10.0); [void]$hits.Add("BODY_ENTROPY") }
+                                        if ($T.alignment -and $Hs -match "Return-Path:.*?<(?<v>.*?)>") { $rp = $Matches['v']; if ($Se -and $rp -and $Se.ToLower() -ne $rp.ToLower()) { $sc += ($W.alignment / 10.0); [void]$hits.Add("SENDER_MISALIGNMENT") } }
                                         
-                                        if ($sc -ge $ru.threshold) { $mv = "SPAM (Heuristics)" }
+                                        if ($T.heuristics) {
+                                            if (![string]::IsNullOrEmpty($Su)) { foreach ($kw in $sk) { if ($Su.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $sc += ($W.heuristics / 10.0); [void]$hits.Add("SUBJECT_SCAM_KEYWORD"); break } } }
+                                            if (![string]::IsNullOrEmpty($by)) { foreach ($kw in $sk) { if ($by.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $sc += ($W.heuristics / 10.0); [void]$hits.Add("BODY_SCAM_KEYWORD"); break } } }
+                                        }
 
-                                        if (![string]::IsNullOrEmpty($Vk)) { try { $u = "https://www.virustotal.com/api/v3/files/$bSha"; $h = @{ "x-apikey" = $Vk }; $r = Invoke-RestMethod -Uri $u -Headers $h -Method Get -TimeoutSec 5; if ($r.data.attributes.last_analysis_stats.malicious -gt 0) { $mv = "MALWARE (VT)"; [void]$hits.Add("REPUTATION_ENGINE") } } catch {} }
-                                        if ($mv -eq "CLEAN" -and -not $Pm) { try { $d = Resolve-DnsName -Name "$bMd5.malware.hash.cymru.com" -Type TXT -ErrorAction SilentlyContinue; if ($d.Strings -match "127\.0\.0\.2") { $mv = "MALWARE (Hash DB)"; [void]$hits.Add("REPUTATION_ENGINE") } } catch {} }
+                                        if ($T.body -and ($by -match "<script" -or $by -match "display:\s*none" -or $by -match "visibility:\s*hidden" -or $by -match "font-size:\s*0")) { $sc += ($W.body / 10.0); [void]$hits.Add("HIDDEN_BODY_ENTROPY") }
+                                        
+                                        $hitStr = [string]::Join(", ", $hits)
+                                        $displayScore = if ($isBlacklisted) { 0 } else { [Math]::Max(0, (100 - ($sc * 10))) }
+
+                                        $verdictThreshold = if ($null -ne $ru.spamThresholdPercent) { $ru.spamThresholdPercent } else { 50 }
+                                        if ($displayScore -le $verdictThreshold) { $mv = "SPAM (Heuristics)" }
                                     }
                                     
-                                    $hitStr = [string]::Join(", ", $hits)
-                                    if ($mv -ne "CLEAN") {
-                                        $Tgt = $f.Store.GetDefaultFolder(23); $Quar = Robust-Move -item $t -targetFolder $Tgt
+                                    if ($mv -ne "CLEAN") {                                        $Tgt = $f.Store.GetDefaultFolder(23); $Quar = Robust-Move -item $t -targetFolder $Tgt
                                         if ($null -ne $Quar) { 
-                                            Send-Status -status "SPAM FILTERED" -details $Su -verdict "Spam" -action "Quarantined" -entryId $Quar.EntryID -sender $Se -ip $IP -domain $Do -originalFolder $f.EntryID -fullHeaders $Hs -body $by -tier $hitStr -unread $curUnread -scanType $stType -to $f_to -cc $f_cc
+                                            Send-Status -status "SPAM FILTERED" -details $Su -verdict "Spam" -action "Quarantined" -entryId $Quar.EntryID -sender $Se -ip $IP -domain $Do -originalFolder $f.EntryID -fullHeaders $Hs -body $by -tier $hitStr -unread $curUnread -scanType $stType -to $f_to -cc $f_cc -score $displayScore
                                             Release-Com -Object $Quar 
                                         }
                                         Release-Com -Object $Tgt
                                     } else {
-                                        Send-Status -status "Finished" -details $Su -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -originalFolder $f.EntryID -fullHeaders $Hs -body $by -tier "" -unread $curUnread -scanType $stType -to $f_to -cc $f_cc
+                                        Send-Status -status "Finished" -details $Su -verdict "Safe" -entryId $Id -sender $Se -ip $IP -domain $Do -originalFolder $f.EntryID -fullHeaders $Hs -body $by -tier "Clean (Passed Security Checks)" -unread $curUnread -scanType $stType -to $f_to -cc $f_cc -score $displayScore
                                     }
                                     
                                 } catch {} finally { Release-Com -Object $t; Release-Com -Object $pa }

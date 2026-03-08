@@ -128,7 +128,7 @@ ensureConfigIntegrity();
 const Store = require('electron-store');
 const store = new Store({
     cwd: SHARED_DATA_PATH, name: 'config', clearInvalidConfig: true,
-    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, totals: { spam: 0, safe: 0, malicious: 0, suspicious: 0 }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, blacklist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
+    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, totals: { spam: 0, safe: 0, malicious: 0, suspicious: 0 }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, spamThresholdPercent: 50, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, blacklist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', score: '80px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
 });
 
 async function forceReloadStore() {
@@ -546,6 +546,7 @@ async function shutdown(code = 0) {
 app.on('will-quit', e => { if (!isShuttingDown) { e.preventDefault(); shutdown(0); } });
 
 app.on('ready', async () => {
+    Menu.setApplicationMenu(null);
     try {
         if (!isServiceMode) {
             cleanupZombies();
@@ -562,10 +563,19 @@ app.on('ready', async () => {
                     return;
                 }
             }
-            process.stdin.resume(); process.stdin.setEncoding('utf8');
+            let hBuf = ''; process.stdin.resume(); process.stdin.setEncoding('utf8');
             process.stdin.on('data', async d => {
-                const h = safeJsonParse(d.toString());
-                if (h && h.authToken && h.pipeName) { serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0; if (!(await acquireServiceLease())) { app.exit(0); } else { await startServiceWatchdog(); } }
+                hBuf += d.toString();
+                while (hBuf.includes('\n')) {
+                    const parts = hBuf.split('\n'); const line = parts[0].trim(); hBuf = parts.slice(1).join('\n'); 
+                    if (!line) continue;
+                    const h = safeJsonParse(line);
+                    if (h && h.authToken && h.pipeName) { 
+                        serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0; 
+                        await logLine('SVC', `Handshake successful from STDIN. Pipe: ${servicePipeName}`); 
+                        if (!(await acquireServiceLease())) { app.exit(0); } else { await startServiceWatchdog(); }
+                    }
+                }
             });
         }
     } catch (e) { await logLine('BOOT_ERROR', e.stack || e.message); }
@@ -610,7 +620,11 @@ ipcMain.handle('clear-security-cache', async () => {
 });
 ipcMain.handle('app-reset', async () => { 
     const release = await acquireFileLock(STORE_LOCK_PATH);
-    try { store.clear(); if (fs.existsSync(CONFIG_FILE_PATH)) fs.unlinkSync(CONFIG_FILE_PATH); } finally { await release(); }
+    try { 
+        store.clear(); 
+        if (fs.existsSync(CONFIG_FILE_PATH)) fs.unlinkSync(CONFIG_FILE_PATH); 
+        if (fs.existsSync(LOG_DIR)) fs.rmSync(LOG_DIR, { recursive: true, force: true });
+    } finally { await release(); }
     app.relaunch(); setTimeout(() => shutdown(0), 100); return { ok: true }; 
 });
 ipcMain.handle('backup-config', async () => { await forceReloadStore(); const d = await dialog.showSaveDialog(mainWindow, { defaultPath: 'config.json' }); if (!d.filePath) return false; await fsPromises.writeFile(d.filePath, JSON.stringify(store.store, null, 2)); return true; });
@@ -638,8 +652,30 @@ ipcMain.handle('release-email', async (e, d) => {
         for (const line of lines) {
             const p = safeJsonParse(line.trim()); if (!p) continue;
             if (p.type === 'release-progress') {
-                if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.send('live-log', `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status}`); if (p.status === 'Finished' || p.status === 'Error') { mainWindow.webContents.send('email-released', { ok: p.ok, entryId: p.entryId }); } }
-                if (p.status === 'Finished' && p.ok) { await safeStoreUpdate(s => { for (const cat in s.stats) { const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[cat].splice(idx, 1); break; } } }); }
+                if (mainWindow && !mainWindow.isDestroyed()) { 
+                    mainWindow.webContents.send('live-log', `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status}`); 
+                    mainWindow.webContents.send('email-moved', { ok: p.ok, entryId: p.entryId, status: p.status, to: 'safe' });
+                }
+                if (p.status === 'Finished' && p.ok) {
+                    await safeStoreUpdate(s => {
+                        let item = null; let src = null;
+                        for (const cat in s.stats) {
+                            const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId);
+                            if (idx !== -1) { item = s.stats[cat].splice(idx, 1)[0]; src = cat; break; }
+                        }
+                        if (item) {
+                            if (s.totals && src && s.totals[src] > 0) s.totals[src]--;
+                            item.entryId = p.newEntryId || item.entryId;
+                            item.verdict = 'Safe';
+                            item.action = 'Manual Release';
+                            if (!s.stats.safe) s.stats.safe = [];
+                            s.stats.safe.push(item);
+                            if (s.stats.safe.length > 1000) s.stats.safe = s.stats.safe.slice(-1000);
+                            if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
+                            s.totals.safe = (s.totals.safe || 0) + 1;
+                        }
+                    });
+                }
             }
         }
     });
@@ -668,8 +704,31 @@ ipcMain.handle('quarantine-email', async (e, d) => {
         const lines = data.toString().split('\n');
         for (const line of lines) {
             const p = safeJsonParse(line.trim()); if (!p) continue;
-            if (p.type === 'quarantine-progress' && p.status === 'Finished' && p.ok) {
-                await safeStoreUpdate(s => { for (const c in s.stats) { const idx = s.stats[c].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[c].splice(idx, 1); break; } } });
+            if (p.type === 'quarantine-progress') {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('live-log', `[QUARANTINE] Item ${p.entryId.substring(0,8)}: ${p.status}`);
+                    mainWindow.webContents.send('email-moved', { ok: p.ok, entryId: p.entryId, status: p.status, to: 'spam' });
+                }
+                if (p.status === 'Finished' && p.ok) {
+                    await safeStoreUpdate(s => {
+                        let item = null; let src = null;
+                        for (const c in s.stats) {
+                            const idx = s.stats[c].findIndex(it => it.entryId === p.entryId);
+                            if (idx !== -1) { item = s.stats[c].splice(idx, 1)[0]; src = c; break; }
+                        }
+                        if (item) {
+                            if (s.totals && src && s.totals[src] > 0) s.totals[src]--;
+                            item.entryId = p.newEntryId || item.entryId;
+                            item.verdict = 'Spam';
+                            item.action = 'Manual Quarantine';
+                            if (!s.stats.spam) s.stats.spam = [];
+                            s.stats.spam.push(item);
+                            if (s.stats.spam.length > 1000) s.stats.spam = s.stats.spam.slice(-1000);
+                            if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
+                            s.totals.spam = (s.totals.spam || 0) + 1;
+                        }
+                    });
+                }
             }
         }
     });

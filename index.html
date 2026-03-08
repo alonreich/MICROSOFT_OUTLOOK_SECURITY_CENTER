@@ -8,52 +8,63 @@
     :root { --bg: #0a0e1c; --card: #161b2d; --border: #2d334a; --text: #e1e4e8; --muted: #8b949e; --accent: #8e75ff; --danger: #ff6161; --warn: #ffb86c; --ok: #50fa7b; --metallic: linear-gradient(180deg, #3d445d 0%, #2d334a 100%); }
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+    
     .header { padding: 15px 25px; background: rgba(22, 27, 45, 0.8); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
     .logo { font-weight: 900; letter-spacing: 2px; font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 12px; }
     .logo span { color: var(--accent); }
-    .status-badge { padding: 6px 15px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.1); }
-    .status-btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 800; font-size: 0.75rem; transition: all 0.2s; background: var(--metallic); color: #fff; border: 1px solid var(--border); }
+    
+    .status-btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 800; font-size: 0.75rem; transition: all 0.2s; background: var(--metallic); color: #fff; border: 1px solid var(--border); min-width: 120px; }
     .status-btn.on { background: var(--ok); color: #000; border-color: #40c060; }
     .status-btn.off { background: var(--danger); color: #fff; border-color: #d04040; }
+    
     .main-grid { display: grid; grid-template-columns: 300px 1fr; flex: 1; overflow: hidden; }
-    .sidebar { background: #0d111d; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
-    .stat-card.active { border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.2); }
-    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 5px; width: 100%; }
-    .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; width: 100%; }
+    .sidebar { background: #0d111d; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    
+    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 100px; justify-content: center; }
+    .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); background: rgba(142, 117, 255, 0.05); }
+    .stat-card.active { border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.2); background: rgba(142, 117, 255, 0.1); }
+    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 2px; width: 100%; }
+    .stat-label { font-size: 0.65rem; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 1px; width: 100%; margin-bottom: 4px; }
+    .stat-desc { font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8; }
+    
     .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
     .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); padding: 12px 20px; background: rgba(0,0,0,0.2); font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    
+    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; background: rgba(0,0,0,0.3); font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
     .table-list { flex: 1; overflow-y: auto; }
-    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02); cursor: pointer; align-items: center; }
+    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; align-items: center; }
     .list-item:hover { background: rgba(142, 117, 255, 0.05); }
     .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
     .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px; }
-    .log-area { background: #05070a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.7rem; overflow-y: auto; color: #88c0d0; }
-    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
-    .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 800px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 30px rgba(142, 117, 255, 0.3); }
-    .modal-header { font-weight: 900; font-size: 1.2rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-    .detail-grid { display: grid; grid-template-columns: 150px 1fr; gap: 10px; margin-bottom: 20px; }
-    .detail-label { font-weight: 800; color: var(--muted); font-size: 0.7rem; text-transform: uppercase; }
-    .header-area { flex: 1; background: #0d111d; border: 1px solid var(--border); padding: 15px; font-family: monospace; font-size: 0.7rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #a3be8c; border-radius: 8px; }
-    .btn-secondary { background: var(--metallic); border: 1px solid var(--border); color: var(--text); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
-    .btn-secondary:hover { border-color: var(--accent); }
-    .btn-secondary.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-apply { background: var(--accent); color: #fff; border: none; padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 15px rgba(142, 117, 255, 0.3); }
-    .btn-step { background: var(--metallic); border: 1px solid var(--border); color: var(--text); width: 22px; height: 22px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 900; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-    .btn-step:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: #fff; }
-    .btn-step:disabled { opacity: 0.3; cursor: not-allowed; }
-    .btn-cancel-metallic { background: #2d334a; color: var(--muted); border: 1px solid var(--border); padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; }
-    .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 2000; overflow: hidden; }
-    .context-menu-item { padding: 10px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); transition: background 0.2s; }
+    
+    .log-area { background: #05070a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.7rem; overflow-y: auto; color: #88c0d0; line-height: 1.4; }
+    
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
+    .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 850px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+    .modal-header { font-weight: 900; font-size: 1.1rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); text-align: center; color: #fff; letter-spacing: 1px; }
+    
+    .btn-ui { background: var(--metallic); border: 1px solid var(--border); color: var(--text); padding: 0 20px; height: 40px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; min-width: fit-content; }
+    .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; }
+    .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); }
+    .modal-content .btn-ui { min-width: 180px; }
+    .btn-ui.danger:hover { border-color: var(--danger); background: rgba(255, 97, 97, 0.1); color: var(--danger); }
+    .btn-ui.success:hover { border-color: var(--ok); background: var(--ok); color: #000; }
+    
+    .btn-step { background: var(--metallic); border: 1px solid var(--border); color: var(--text); width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+    .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
+    
+    .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; z-index: 2000; overflow: hidden; min-width: 250px; }
+    .context-menu-item { padding: 12px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.05); }
     .context-menu-item:hover { background: var(--accent); color: #fff; }
-    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); letter-spacing: 1px; }
-    .setting-group { margin-bottom: 20px; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 10px; border: 1px solid var(--border); }
-    .setting-group label { display: block; font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
-    .setting-group input[type="text"], .setting-group textarea { width: 100%; background: #05070a; border: 1px solid var(--border); border-radius: 6px; padding: 10px; color: var(--text); font-family: inherit; font-size: 0.8rem; }
-    .setting-group input:focus, .setting-group textarea:focus { outline: none; border-color: var(--accent); }
+    
+    .setting-group { margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
+    .setting-group label { display: block; font-size: 0.6rem; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+    .setting-group input, .setting-group textarea { width: 100%; background: #05070a; border: 1px solid var(--border); border-radius: 4px; padding: 8px; color: #fff; font-family: inherit; font-size: 0.8rem; }
+    .setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    
+    #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
     #tooltip { position: fixed; background: #1c2135; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; color: #fff; width: 350px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 3000; pointer-events: none; }
+    
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
@@ -61,646 +72,386 @@
   </style>
 </head>
 <body>
-  <div id="toast" class="toast">COPIED TO CLIPBOARD</div>
+  <div id="toast">COPIED TO CLIPBOARD</div>
   <div id="tooltip"></div>
+  
   <header class="header">
     <div class="logo">
         <svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
         MICROSOFT OUTLOOK <span>SECURITY CENTER</span>
     </div>
-    <div style="display:flex; gap:20px; align-items:center;">
-        <button id="history-toggle" class="btn-secondary" title="Enable full historical scan instead of just real-time">PERFORM HISTORY SCAN</button>
-        <button id="sensitivity-btn" class="btn-secondary">ANTI-SPAM ENGINES</button>
-        <button id="schedule-btn" class="btn-secondary">AUDIT SCHEDULER</button>
-        <button id="settings-btn" class="btn-secondary">
-            <svg style="width:16px; height:16px; fill:currentColor" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.47,5.34 14.86,5.08L14.47,2.44C14.43,2.21 14.23,2 14,2H10C13.77,2 13.57,2.21 13.53,2.44L13.14,5.08C12.53,5.34 11.96,5.66 11.44,6.05L8.95,5.05C8.73,4.96 8.46,5.05 8.34,5.27L6.34,8.73C6.22,8.95 6.27,9.22 6.46,9.37L8.57,11.03C8.53,11.35 8.5,11.67 8.5,12C8.5,12.33 8.53,12.65 8.57,12.97L6.46,14.63C6.27,14.78 6.22,15.05 6.34,15.27L8.34,18.73C8.46,18.95 8.73,19.04 8.95,18.95L11.44,17.95C11.96,18.34 12.53,18.66 13.14,18.92L13.53,21.56C13.57,21.79 13.77,22 14,22H10C14.23,22 14.43,21.79 14.47,21.56L14.86,18.92C15.47,18.66 16.04,18.34 16.56,17.95L19.05,18.95C19.27,19.04 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
-            SETTINGS
-        </button>
+    <div style="display:flex; gap:15px; align-items:center;">
+        <button id="history-toggle" class="btn-ui">PERFORM HISTORY SCAN</button>
+        <button id="sensitivity-btn" class="btn-ui">ANTI-SPAM ENGINES</button>
+        <button id="settings-btn" class="btn-ui">SETTINGS</button>
         <button id="scanner-toggle" class="status-btn off">Turned Off</button>
     </div>
   </header>
+
   <div class="main-grid">
     <aside class="sidebar">
-        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size:0.6rem; color:var(--muted)">Deleted Items Isolation</div></div>
-        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size:0.6rem; color:var(--muted)">Flagged / Manual Audit</div></div>
-        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size:0.6rem; color:var(--muted)">Junk Folder Quarantine</div></div>
-        <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div><div style="font-size:0.6rem; color:var(--muted)">Inbox / Authorized Senders</div></div>
+        <div id="card-malicious" class="stat-card active">
+            <div class="stat-label">Malicious</div>
+            <div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div>
+            <div class="stat-desc">Critical Threats Blocked</div>
+        </div>
+        <div id="card-suspicious" class="stat-card">
+            <div class="stat-label">Suspicious</div>
+            <div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div>
+            <div class="stat-desc">Flagged for Review</div>
+        </div>
+        <div id="card-spam" class="stat-card">
+            <div class="stat-label">Spam</div>
+            <div id="count-spam" class="stat-val" style="color:#8e75ff">0</div>
+            <div class="stat-desc">Quarantined to Junk</div>
+        </div>
+        <div id="card-safe" class="stat-card">
+            <div class="stat-label">Safe</div>
+            <div id="count-safe" class="stat-val" style="color:var(--ok)">0</div>
+            <div class="stat-desc">Inbox / Trusted Senders</div>
+        </div>
         <div style="flex:1"></div>
-        <button id="show-logs-btn" class="btn-secondary" style="width:100%; justify-content:center;">OPEN DEBUG LOGS</button>
-        <button id="reset-btn" class="btn-secondary" style="width:100%; justify-content:center; color:var(--danger); border-color: rgba(255,97,97,0.3);">RESET APP</button>
+        <button id="show-logs-btn" class="btn-ui" style="width:100%; justify-content:center;">OPEN LOGS</button>
+        <button id="reset-btn" class="btn-ui danger" style="width:100%; justify-content:center;">RESET APP</button>
     </aside>
+    
     <main class="content">
         <div class="table-container">
-            <div class="table-header"><div>Subject</div><div>Date</div><div>Time</div><div>IP Address</div><div>Verdict</div><div>Action</div><div>Forensics</div></div>
+            <div class="table-header">
+                <div>Subject</div><div>Date</div><div>Time</div><div>IP Address</div><div>Verdict</div><div>Score</div><div>Action</div><div>Reasoning</div>
+            </div>
             <div id="threat-list" class="table-list"></div>
         </div>
         <div id="log-container" class="log-area"></div>
     </main>
   </div>
+
+  <div id="sensitivity-modal" class="modal">
+    <div class="modal-content" style="width: 650px;">
+        <div class="modal-header">ANTI-SPAM ENGINES</div>
+        <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; padding: 10px; overflow-y: auto;"></div>
+        
+        <div style="margin-top: 20px; padding: 15px; border-top: 2px solid var(--border); background: rgba(142, 117, 255, 0.05); border-radius: 10px;">
+            <div style="text-align: center; margin-bottom: 10px;">
+                <div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div>
+                <input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;">
+                <div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div>
+            </div>
+            <div style="text-align: center; margin-top: 10px;">
+                <span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span>
+                <div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div>
+            </div>
+        </div>
+        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;">
+            <button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button>
+            <button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button>
+            <button id="close-sensitivity" class="btn-ui danger">CANCEL</button>
+        </div>
+    </div>
+  </div>
+
   <div id="settings-modal" class="modal">
     <div class="modal-content" style="width: 900px;">
-        <div class="modal-header" style="justify-content: center;">FORENSIC SECURITY CONFIGURATION</div>
-        <div style="display: flex; flex-direction: column; gap: 20px; overflow-y: auto;">
-            <div class="setting-group">
-                <label>VirusTotal Professional API Key (Optional)</label>
-                <input type="text" id="vt-api-key" placeholder="Enter key for multi-engine cloud verification">
+        <div class="modal-header">SETTINGS</div>
+        <div style="overflow-y: auto; flex: 1; padding-right: 10px;">
+            <div class="setting-group"><label>VirusTotal Enterprise API Key</label><input type="text" id="vt-api-key" placeholder="Enter your key here..."></div>
+            
+            <div class="setting-grid">
+                <div class="setting-group"><label>Trusted Emails</label><textarea id="wl-emails" style="height:80px;" placeholder="example@trust.com&#10;admin@company.net"></textarea></div>
+                <div class="setting-group"><label>Blocked Emails</label><textarea id="bl-emails" style="height:80px;" placeholder="scam@evil.com&#10;hacker@darkweb.org"></textarea></div>
             </div>
-            <div class="setting-group">
-                <label>Custom Spam Heuristic Keywords (One per line)</label>
-                <textarea id="spam-keywords" style="height:80px;" placeholder="urgent, lottery, win, prize..."></textarea>
+            <div class="setting-grid">
+                <div class="setting-group"><label>Trusted IPs</label><textarea id="wl-ips" style="height:80px;" placeholder="192.168.1.50&#10;10.0.0.1"></textarea></div>
+                <div class="setting-group"><label>Blocked IPs</label><textarea id="bl-ips" style="height:80px;" placeholder="45.12.33.10&#10;103.5.2.99"></textarea></div>
             </div>
-            <div class="setting-group">
-                <label>Global Spam Score Threshold (1-100)</label>
-                <input type="text" id="spam-threshold" style="width: 80px; text-align: center;">
+            <div class="setting-grid">
+                <div class="setting-group"><label>Trusted Domains</label><textarea id="wl-domains" style="height:80px;" placeholder="microsoft.com&#10;office.com"></textarea></div>
+                <div class="setting-group"><label>Blocked Domains</label><textarea id="bl-domains" style="height:80px;" placeholder="fake-login.xyz&#10;urgent-update.net"></textarea></div>
             </div>
-            <div class="setting-group">
-                <div class="detail-label" style="font-size: 0.85rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">FORENSIC WHITELISTS</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div style="text-align: center;">
-                        <label>Authorized Emails</label>
-                        <textarea id="wl-emails" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="ceo@company.com"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Authorized IPs</label>
-                        <textarea id="wl-ips" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="192.168.1.100"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Authorized Domains</label>
-                        <textarea id="wl-domains" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="trusted.com"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Authorized combinations</label>
-                        <textarea id="wl-combos" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="1.2.3.4|trusted.com"></textarea>
-                    </div>
-                </div>
+            <div class="setting-grid">
+                <div class="setting-group"><label>Trusted IP + Domain Combos</label><textarea id="wl-combos" style="height:80px;" placeholder="1.2.3.4|trusted.com&#10;5.6.7.8|safe.net"></textarea></div>
+                <div class="setting-group"><label>Blocked IP + Domain Combos</label><textarea id="bl-combos" style="height:80px;" placeholder="9.9.9.9|evil-scam.biz&#10;8.8.4.4|malware.ru"></textarea></div>
             </div>
-            <div class="setting-group">
-                <div class="detail-label" style="font-size: 0.85rem; color: var(--danger); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">FORENSIC BLACKLISTS</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div style="text-align: center;">
-                        <label>Blocked Emails</label>
-                        <textarea id="bl-emails" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="spammer@bad.com"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Blocked IPs</label>
-                        <textarea id="bl-ips" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="66.66.66.66"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Blocked Domains</label>
-                        <textarea id="bl-domains" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="evil-scam.net"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Blocked combinations</label>
-                        <textarea id="bl-combos" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="9.9.9.9|scam.org"></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="setting-group">
-                <label>System Maintenance</label>
-                <div style="display:flex; gap:10px;">
-                    <button id="backup-btn" class="btn-secondary" style="justify-content:center; padding:10px;">BACKUP CONFIGURATION</button>
-                    <button id="restore-btn" class="btn-secondary" style="justify-content:center; padding:10px;">RESTORE CONFIGURATION</button>
-                </div>
-            </div>
+
+            <div class="setting-group"><label>Global Spam Keywords (One per line)</label><textarea id="spam-keywords" style="height:150px;" placeholder="viagra&#10;bitcoin&#10;inheritance&#10;winner"></textarea></div>
         </div>
-        <div style="display:flex; justify-content: center; align-items: center; gap:30px; margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
-            <button id="save-settings" class="btn-apply">APPLY</button>
-            <button id="close-settings" class="btn-cancel-metallic">CANCEL</button>
+        <div style="display:flex; justify-content: center; gap:15px; margin-top:20px;">
+            <button id="save-settings" class="btn-ui success">SAVE CONFIGURATION</button>
+            <button id="close-settings" class="btn-ui danger">CANCEL</button>
         </div>
     </div>
   </div>
-  <div id="sensitivity-modal" class="modal">
-    <div class="modal-content" style="width: 600px;">
-        <div class="modal-header" style="justify-content: center;">ANTI-SPAM ENGINES</div>
-        <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 15px; padding: 10px;"></div>
-        <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px;">
-            <button id="save-sensitivity" class="btn-apply">APPLY WEIGHTS</button>
-            <button id="reset-sensitivity-defaults" class="btn-secondary" style="font-size: 0.6rem; padding: 10px; border-color: var(--muted); color: var(--muted);">RESET TO DEFAULTS</button>
-            <button id="close-sensitivity" class="btn-cancel-metallic">CANCEL</button>
-        </div>
-    </div>
-  </div>
-  <div id="schedule-modal" class="modal">
-    <div class="modal-content" style="width: 400px;">
-        <div class="modal-header">Audit Scheduler</div>
-        <div id="power-warning" style="display:none; background:rgba(255,97,97,0.2); padding:10px; border-radius:6px; font-size:0.7rem; color:var(--danger); margin-bottom:10px; border:1px solid var(--danger);">
-            WARNING: Your PC is set to sleep. Scheduled scans may fail.
-            <button id="fix-power-btn" style="margin-top:5px; width:100%; padding:5px; cursor:pointer;">Fix Power Plan</button>
-        </div>
-        <div class="setting-group">
-            <label style="display:flex; align-items:center; gap:10px; justify-content:center;">
-                <input type="checkbox" id="sched-enabled" style="width:auto;"> Enable One-Time Scan
-            </label>
-            <div style="margin-top:10px;">
-                <label>Target Date & Time</label>
-                <input type="datetime-local" id="sched-datetime">
-            </div>
-        </div>
-        <div style="display:flex; gap:10px; margin-top:15px;">
-            <button id="save-schedule" class="btn-apply" style="flex:1;">Save</button>
-            <button id="close-schedule" class="btn-cancel-metallic" style="flex:1;">Cancel</button>
-        </div>
-    </div>
-  </div>
-  <div id="reset-modal" class="modal">
-    <div class="modal-content" style="width: 400px; border-color: var(--danger);">
-        <div class="modal-header" style="color: var(--danger);">HARD FACTORY RESET</div>
-        <p style="font-size: 0.8rem; text-align: center; color: var(--muted);">This will wipe all statistics, processed IDs, and settings.</p>
-        <div style="display:flex; gap:10px; margin-top:10px;">
-            <button id="confirm-reset" class="btn-cancel-metallic" style="flex:1; background:var(--danger); color:white;">RESET EVERYTHING</button>
-            <button id="cancel-reset" class="btn-secondary" style="flex:1;">CANCEL</button>
-        </div>
-    </div>
-  </div>
-  <div id="details-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span>Email Forensic Details</span>
-            <span id="close-details-x" style="cursor: pointer; color: #ff6161; font-weight: bold; font-size: 1.5rem; line-height: 1;">&times;</span>
-        </div>
-        <div class="detail-grid" id="detail-view"></div>
-        <div class="detail-label" style="margin-top:12px; margin-bottom:4px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
-            Full RFC 822 Headers:
-            <span id="copy-headers-icon" title="Click here to copy the entire header of the email" style="cursor: pointer; display: flex; align-items: center;">
-                <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
-            </span>
-        </div>
-        <div class="header-area" id="header-text"></div>
-        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 45px;">
-            <button id="read-email-btn" class="btn-secondary" style="background:var(--accent); padding: 10px 25px; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px;">✉️ Read Email Content ✉️</button>
-            <button id="close-details-btn" class="btn-secondary" style="background: #800000; border-color: #a00000; position: absolute; right: 0; padding: 10px 20px; font-weight: 800;">Close Window</button>
-        </div>
-    </div>
-  </div>
-  <div id="body-modal" class="modal">
-    <div class="modal-content" style="width: 90%; height: 90vh;">
-        <div class="modal-header">
-            <span id="body-subject">Email Content</span>
-            <button id="close-body-btn" class="btn-cancel-metallic" style="padding:5px 15px;">X</button>
-        </div>
-        <div id="body-text" class="header-area" style="color: #fff; font-family: inherit; font-size: 0.9rem; line-height: 1.6;"></div>
-    </div>
-  </div>
+
   <div id="ctx-menu" class="context-menu">
-    <div class="context-menu-item" id="rel-email">Release & Whitelist: Email Address Only</div>
-    <div class="context-menu-item" id="rel-ip">Release & Whitelist: IP Address Only</div>
-    <div class="context-menu-item" id="rel-domain">Release & Whitelist: Domain Only</div>
-    <div class="context-menu-item" id="rel-combo">Release & Whitelist: IP Address and Domain Combination</div>
+    <div class="context-menu-item" id="ctx-email">Mark based on Email</div>
+    <div class="context-menu-item" id="ctx-ip">Mark based on IP</div>
+    <div class="context-menu-item" id="ctx-domain">Mark based on Domain</div>
+    <div class="context-menu-item" id="ctx-combo">Mark based on Combo</div>
   </div>
+
   <script>
     const api = window.securityApi;
     const list = document.getElementById('threat-list');
-    const detModal = document.getElementById('details-modal');
     const logContainer = document.getElementById('log-container');
     const tooltipEl = document.getElementById('tooltip');
-    const toastEl = document.getElementById('toast');
-
-    function showToast() {
-        toastEl.style.display = 'block';
-        setTimeout(() => { toastEl.style.display = 'none'; }, 2000);
-    }
 
     let stats = { malicious: [], suspicious: [], spam: [], safe: [] };
     let selectedIds = new Set();
-    let pendingActions = new Set(); // Track items being moved to prevent ghosting (Issue 5)
-    let lastSelectedIndex = -1;
-    let lastRenderedJson = "";
-    let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
+    let pendingActions = new Set();
     let currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 };
     let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true };
+    let currentSpamThreshold = 50;
+    let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', score: '80px', action: '150px', reasoning: '1fr' };
+    let lastRenderedJson = "";
     let tooltipTimer = null;
-    let currentDetailEntryId = null;
+
+    function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+    function addLog(msg) { const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
+    function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
+
+    function renderList() {
+        const activeCard = document.querySelector('.stat-card.active');
+        const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
+        const items = (stats[cat] || []).slice(-100).reverse();
+        const currentDataJson = JSON.stringify(items.map(i => i.entryId + selectedIds.has(i.entryId)));
+        if (currentDataJson === lastRenderedJson) return;
+        lastRenderedJson = currentDataJson;
+        if (items.length === 0) { list.innerHTML = `<div style="padding:40px; text-align:center; color:var(--muted); font-size:0.8rem; font-weight:800;">NO EMAILS DETECTED</div>`; return; }
+        list.innerHTML = items.map((i, idx) => {
+            const [d, t] = (i.date || " ").split(' ');
+            const vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff';
+            const isSelected = selectedIds.has(i.entryId);
+            return `<div class="list-item ${isSelected ? 'selected' : ''}" data-id="${i.entryId}">
+                <div title="${escapeHTML(i.subject)}">${escapeHTML(i.subject)}</div>
+                <div>${escapeHTML(d)}</div>
+                <div>${escapeHTML(t)}</div>
+                <div>${escapeHTML(i.ip || 'N/A')}</div>
+                <div style="color:${vColor}; font-weight:bold;">${cat.toUpperCase()}</div>
+                <div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score || 100)}%</div>
+                <div>${escapeHTML(i.action || 'None')}</div>
+                <div title="${escapeHTML(i.tier || '')}">${escapeHTML(i.tier || '')}</div>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.list-item').forEach(el => {
+            el.onclick = (e) => { const id = el.dataset.id; if (!e.ctrlKey) selectedIds.clear(); if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id); lastRenderedJson = ""; renderList(); };
+            el.oncontextmenu = (e) => { 
+                e.preventDefault(); 
+                if (!selectedIds.has(el.dataset.id)) { selectedIds.clear(); selectedIds.add(el.dataset.id); lastRenderedJson = ""; renderList(); } 
+                
+                const activeCard = document.querySelector('.stat-card.active');
+                const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
+                const prefix = cat === 'safe' ? 'Mark as SPAM' : 'Mark as SAFE';
+                
+                document.getElementById('ctx-email').textContent = `${prefix}: Sender Only`;
+                document.getElementById('ctx-ip').textContent = `${prefix}: IP Address Only`;
+                document.getElementById('ctx-domain').textContent = `${prefix}: Domain Only`;
+                document.getElementById('ctx-combo').textContent = `${prefix}: Domain & IP Address Combination`;
+
+                const menu = document.getElementById('ctx-menu'); 
+                menu.style.display = 'block'; 
+                menu.style.left = e.pageX + 'px'; 
+                menu.style.top = e.pageY + 'px'; 
+            };
+        });
+    }
+
+    function updateDashboard(data) { if (!data) return; for (const cat in data) { stats[cat] = data[cat].filter(i => !pendingActions.has(i.entryId)); } ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = stats[c].length; }); renderList(); }
+    window.stepWeight = (key, delta) => { if (!currentToggles[key]) return; let newVal = currentWeights[key] + delta; if (newVal < 1) newVal = 1; if (newVal > 100) newVal = 100; rebalanceWeights(key, newVal); renderSensitivityUI(); };
+    function rebalanceWeights(key, newVal) {
+        if (!currentToggles[key]) {
+            currentWeights[key] = 0;
+        } else {
+            const oldVal = currentWeights[key] || 0;
+            const diff = newVal - oldVal;
+            currentWeights[key] = newVal;
+            const activeKeys = Object.keys(currentWeights).filter(k => k !== key && currentToggles[k]);
+            if (activeKeys.length > 0) {
+                let rem = diff;
+                activeKeys.forEach(k => {
+                    const share = Math.round(rem / activeKeys.length);
+                    currentWeights[k] -= share;
+                    rem -= share;
+                });
+                currentWeights[activeKeys[0]] -= rem;
+            }
+        }
+        
+        // Ensure active are >= 1, inactive are 0
+        Object.keys(currentWeights).forEach(k => {
+            if (!currentToggles[k]) currentWeights[k] = 0;
+            else if (currentWeights[k] < 1) currentWeights[k] = 1;
+        });
+
+        // Normalize sum to 100
+        let total = 0;
+        const activeKeys = Object.keys(currentWeights).filter(k => currentToggles[k]);
+        activeKeys.forEach(k => total += currentWeights[k]);
+        
+        if (total !== 100 && activeKeys.length > 0) {
+            const adjustKey = activeKeys.find(k => k !== key) || activeKeys[0];
+            currentWeights[adjustKey] += (100 - total);
+        }
+    }
 
     function renderSensitivityUI() {
         const container = document.getElementById('sensitivity-container');
-        const labels = { dmarc: 'DMARC Compliance', alignment: 'Sender Alignment', dkim: 'DKIM Integrity', spf: 'SPF Authorization', rdns: 'Reverse DNS (PTR)', body: 'Body/Payload Entropy', heuristics: 'Heuristic Hooks', rbl: 'RBL Reputation' };
+        const labels = { 
+            dmarc: 'DMARC AUTHENTICATION', 
+            alignment: 'SENDER ALIGNMENT', 
+            dkim: 'DKIM SIGNATURES', 
+            spf: 'SPF AUTHORIZATION', 
+            rdns: 'REVERSE DNS CHECK', 
+            body: 'BODY INTEGRITY', 
+            heuristics: 'SCAM KEYWORDS', 
+            rbl: 'GLOBAL BLACKLISTS' 
+        };
         const tips = {
-            dmarc: "This engine checks if the sender has special 'rules' set up to prove who they are. You should use it to catch advanced fakes. Avoid it only if you get too many 'false alarms' from companies that haven't set their rules correctly.",
-            alignment: "This checks if the name on the envelope matches the name on the letter inside. Use it to stop scammers from pretending to be your boss. Avoid it if you receive many legitimate automated reports that look slightly different.",
-            dkim: "This is like a digital wax seal on the email. Use it to make sure the email wasn't changed by a middle-man. It's very safe to keep on all the time.",
-            spf: "This checks if the email was sent from a 'valid post office' authorized by the sender. Use it to block random strangers from using a famous company's name. It's a foundational security layer.",
-            rdns: "This looks at the sender's 'Internet ID Card' to see if it's real or a cheap fake. Use it to block mass-mailing 'spam bots'. Avoid it only if your internet connection is very slow, as it takes a second to check.",
-            body: "This scans the inside of the email for 'hidden invisible text' or 'tricky code' used by hackers. Use it to find sneaky threats. Avoid it if you deal with complex technical emails that use strange formatting.",
-            heuristics: "This looks for 'Red Flag' words like 'Urgent', 'Winner', or 'Bitcoin'. Use it to catch classic scams. Avoid it if your job involves handling lots of invoices or prizes where these words are normal.",
-            rbl: "This is a global 'Watch List' of known bad guys on the internet. Use it to instantly block known scammers. It is extremely effective and should almost always be kept active."
+            dmarc: "WHAT IT IS: A set of strict rules that prove the sender is really who they say they are. \n\nWHY USE IT: It's the strongest way to stop hackers from pretending to be your bank or boss. \n\nWHEN TO AVOID: If you send emails through a middle-man service that isn't set up perfectly, your own emails might get blocked.",
+            alignment: "WHAT IT IS: Checks if the name on the outside of the envelope matches the name on the actual letter inside. \n\nWHY USE IT: It stops 'imposters' who use a real-looking name but a fake email address. \n\nWHEN TO AVOID: If you use mailing lists or newsletters, they sometimes change these names and might look like a mistake.",
+            dkim: "WHAT IT IS: A digital 'wax seal' that proves the email was not changed by anyone after it was sent. \n\nWHY USE IT: It makes sure that links or files inside the email are exactly what the sender intended. \n\nWHEN TO AVOID: Only turn this off if you receive mail from very old systems that don't know how to 'seal' their emails.",
+            spf: "WHAT IT IS: A list of 'Approved Post Offices' that a company uses to send their mail. \n\nWHY USE IT: It's a basic test that catches many simple scams and fake emails. \n\nWHEN TO AVOID: If a company forgets to update their list, their real emails might look fake. But usually, you should keep this ON.",
+            rdns: "WHAT IT IS: Checks the 'Internet ID Card' of the computer that sent the mail to see if it's a real business or a hidden hacker bot. \n\nWHY USE IT: Most mass-spamming robots don't have a real ID card, so this blocks them instantly. \n\nWHEN TO AVOID: Some small or home-based businesses might not have a perfect ID card yet.",
+            body: "WHAT IT IS: Scans the email for 'hidden tricks' like invisible text or links that try to fool your eyes. \n\nWHY USE IT: It catches hackers who try to hide their bad links inside what looks like a normal message. \n\nWHEN TO AVOID: If you get a lot of very fancy, colorful shopping ads, they might sometimes look 'tricky' to this engine.",
+            heuristics: "WHAT IT IS: Looks for 'Red Flag' words that scammers love to use, like 'WINNER', 'BITCOIN', or 'URGENT'. \n\nWHY USE IT: It's great at catching classic 'Get Rich Quick' or 'You've Been Hacked' scams. \n\nWHEN TO AVOID: If your job involves money, law, or medicine, you might use these words normally, and this might flag them by mistake.",
+            rbl: "WHAT IT IS: A giant global 'Watch List' of known bad guys and spam servers. \n\nWHY USE IT: It's the fastest way to block millions of known spammers before they even reach you. \n\nWHEN TO AVOID: Almost never. This is one of the best tools for a clean inbox."
         };
         container.innerHTML = Object.keys(currentWeights).map(key => {
-            const val = currentWeights[key]; const isEnabled = currentToggles[key];
-            return `<div class="sensitivity-row" data-tip="${escapeHTML(tips[key])}" style="display: flex; align-items: center; gap: 15px; opacity: ${isEnabled ? 1 : 0.4}; cursor: help;">
-                <input type="checkbox" class="weight-toggle" data-key="${key}" ${isEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
-                <div style="flex: 1; font-size: 0.8rem; font-weight: bold;">${labels[key]}</div>
-                <input type="range" class="weight-slider" data-key="${key}" min="1" max="100" value="${val}" ${isEnabled ? '' : 'disabled'} style="flex: 2; cursor: pointer;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button class="btn-step" onclick="stepWeight('${key}', -1)" ${isEnabled ? '' : 'disabled'}>-</button>
-                    <div style="width: 40px; text-align: center; font-family: monospace; font-size: 0.9rem; color: var(--accent);">${val}%</div>
-                    <button class="btn-step" onclick="stepWeight('${key}', 1)" ${isEnabled ? '' : 'disabled'}>+</button>
+            const val = currentWeights[key]; const en = currentToggles[key];
+            return `<div class="sensitivity-row" data-tip="${escapeHTML(tips[key])}" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4}; cursor:help;">
+                <input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}>
+                <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div>
+                <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button class="btn-step" onclick="stepWeight('${key}',-1)" ${en?'':'disabled'}>-</button>
+                    <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div>
+                    <button class="btn-step" onclick="stepWeight('${key}',1)" ${en?'':'disabled'}>+</button>
                 </div>
             </div>`;
         }).join('');
+        
         document.querySelectorAll('.sensitivity-row').forEach(row => {
             row.onmouseenter = (e) => {
                 const text = row.dataset.tip;
                 clearTimeout(tooltipTimer);
                 tooltipTimer = setTimeout(() => {
-                    tooltipEl.textContent = text;
-                    tooltipEl.style.display = 'block';
+                    tooltipEl.textContent = text; tooltipEl.style.display = 'block';
                     const rect = row.getBoundingClientRect();
-                    tooltipEl.style.left = (rect.left - 370) + 'px';
-                    tooltipEl.style.top = rect.top + 'px';
+                    tooltipEl.style.left = (rect.left - 370) + 'px'; tooltipEl.style.top = rect.top + 'px';
                 }, 1000);
             };
             row.onmouseleave = () => { clearTimeout(tooltipTimer); tooltipEl.style.display = 'none'; };
         });
-        document.querySelectorAll('.weight-slider').forEach(slider => { slider.oninput = (e) => { const key = e.target.dataset.key; const newVal = parseInt(e.target.value); rebalanceWeights(key, newVal); renderSensitivityUI(); }; });
-        document.querySelectorAll('.weight-toggle').forEach(chk => { chk.onchange = (e) => { const key = e.target.dataset.key; currentToggles[key] = chk.checked; if (!chk.checked) { const val = currentWeights[key]; currentWeights[key] = 0; distributeDifference(key, val); } else { currentWeights[key] = 1; distributeDifference(key, -1); } renderSensitivityUI(); }; });
-    }
-    window.stepWeight = (key, delta) => {
-        if (!currentToggles[key]) return;
-        const oldVal = currentWeights[key];
-        let newVal = oldVal + delta;
-        if (newVal < 1) newVal = 1;
-        if (newVal > 100) newVal = 100;
-        if (newVal === oldVal) return;
         
-        // Ensure rebalancing is possible
-        const activeKeys = Object.keys(currentWeights).filter(k => k !== key && currentToggles[k]);
-        if (delta > 0) {
-            // If increasing, we must be able to decrease something else
-            const canDecrease = activeKeys.some(k => currentWeights[k] > 1);
-            if (!canDecrease) return;
-        }
-
-        rebalanceWeights(key, newVal);
-        renderSensitivityUI();
-    };
-    function rebalanceWeights(changedKey, newVal) { const oldVal = currentWeights[changedKey]; const diff = newVal - oldVal; currentWeights[changedKey] = newVal; distributeDifference(changedKey, diff); }
-    function distributeDifference(excludeKey, diff) {
-        const activeKeys = Object.keys(currentWeights).filter(k => k !== excludeKey && currentToggles[k]); if (activeKeys.length === 0) return;
-        let rem = diff; while (Math.abs(rem) > 0.01) { const share = rem / activeKeys.length; let applied = 0; activeKeys.forEach(k => { const cur = currentWeights[k]; let adj = share; if (cur - adj < 1) adj = cur - 1; if (cur - adj > 100) adj = cur - 100; currentWeights[k] = parseFloat((cur - adj).toFixed(2)); applied += adj; }); rem -= applied; if (Math.abs(applied) < 0.001) break; }
-        let total = 0; Object.values(currentWeights).forEach(v => total += v); const first = activeKeys[0]; if (first) currentWeights[first] = parseFloat((currentWeights[first] + (100 - total)).toFixed(2));
-        Object.keys(currentWeights).forEach(k => { currentWeights[k] = Math.max(currentToggles[k] ? 1 : 0, Math.round(currentWeights[k])); });
-        total = 0; Object.values(currentWeights).forEach(v => total += v); if (total !== 100 && first) currentWeights[first] += (100 - total);
-    }
-    function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-    
-    function updateDashboard(data) { 
-        // FILTER OUT PENDING ITEMS (Issue 5)
-        const cleanStats = {};
-        for (const cat in data) {
-            cleanStats[cat] = data[cat].filter(item => !pendingActions.has(item.entryId));
-        }
-        stats = cleanStats; 
-        ['malicious','suspicious','spam','safe'].forEach(c => { 
-            const el = document.getElementById('count-'+c); 
-            if(el) el.textContent = cleanStats[c].length; 
-        }); 
-        renderList(); 
-    }
-    
-    function renderList() {
-        const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; 
-        const items = (stats[cat] || []).slice(-100).reverse();
-        const currentDataJson = JSON.stringify(items);
-        if (currentDataJson === lastRenderedJson) {
-            document.querySelectorAll('.list-item').forEach(el => el.classList.toggle('selected', selectedIds.has(el.dataset.id)));
-            return;
-        }
-        lastRenderedJson = currentDataJson;
-        list.innerHTML = items.map((i, idx) => {
-            const [d, t] = i.date.split(' ');
-            const vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff';
-            const isSelected = selectedIds.has(i.entryId);
-            return `<div class="list-item ${isSelected ? 'selected' : ''}" data-id="${i.entryId}" data-index="${idx}">
-                <div>${escapeHTML(i.subject)}</div>
-                <div>${escapeHTML(d)}</div>
-                <div>${escapeHTML(t)}</div>
-                <div>${escapeHTML(i.ip || 'N/A')}</div>
-                <div style="color:${vColor}">${cat.toUpperCase()}</div>
-                <div>${escapeHTML(i.action || 'None')}</div>
-                <div>${escapeHTML(i.tier || '')}</div>
-            </div>`;
-        }).join('');
-
-        document.querySelectorAll('.list-item').forEach(el => {
-            const itemId = el.dataset.id;
-            const itemIdx = parseInt(el.dataset.index);
-            const itemData = items[itemIdx];
-
-            el.onclick = (e) => {
-                if (e.ctrlKey || e.metaKey) {
-                    if (selectedIds.has(itemId)) selectedIds.delete(itemId);
-                    else selectedIds.add(itemId);
-                } else if (e.shiftKey && lastSelectedIndex !== -1) {
-                    const start = Math.min(lastSelectedIndex, itemIdx);
-                    const end = Math.max(lastSelectedIndex, itemIdx);
-                    selectedIds.clear();
-                    for (let i = start; i <= end; i++) selectedIds.add(items[i].entryId);
-                } else {
-                    selectedIds.clear();
-                    selectedIds.add(itemId);
-                }
-                lastSelectedIndex = itemIdx;
-                document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
-            };
-
-            el.ondblclick = async () => {
-                const i = itemData;
-                if (!i) return;
-                currentDetailEntryId = i.entryId;
-                
-                const forensics = await api.getForensics(i.entryId);
-                const [d, t] = i.date.split(' ');
-                const engines = (i.tier || 'None').split(',').map(s => s.trim()).filter(Boolean);
-                const engineHtml = engines.length ? engines.map(eng => `<span style="background: rgba(142, 117, 255, 0.2); color: var(--accent); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; margin-right: 5px; display: inline-block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 0 8px rgba(142, 117, 255, 0.3);">[ ${eng} ]</span>`).join('') : '<span style="color:var(--muted)">None Detected</span>';
-
-                const copySvg = `<svg style="width:12px; height:12px; fill:var(--accent); cursor:pointer;" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>`;
-
-                document.getElementById('detail-view').innerHTML = `
-                    <div class="detail-label">Email Subject:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: 800; color: #fff;">${escapeHTML(i.subject)}</span>
-                        <span id="copy-subject" title="Copy Subject">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Spam Score:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="color:var(--accent); font-weight: 800;">${i.score || 0}</span>
-                        <span id="copy-score" title="Copy Score">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Received:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span>${escapeHTML(d)} at ${escapeHTML(t)}</span>
-                        <span id="copy-received" title="Copy Timestamp">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Sender (From):</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="color: var(--ok); font-family: monospace;">${escapeHTML(i.sender || 'Unknown')}</span>
-                        <span id="copy-from" title="Copy Sender">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Recipient (To):</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="color: #fff; font-family: monospace; font-size: 0.75rem;">${escapeHTML(i.to || 'N/A')}</span>
-                        <span id="copy-to" title="Copy Recipient">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Carbon Copy (CC):</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="color: #fff; font-family: monospace; font-size: 0.75rem;">${escapeHTML(i.cc || 'N/A')}</span>
-                        <span id="copy-cc" title="Copy CC">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Verdict:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: 800; text-transform: uppercase;">${cat}</span>
-                        <span id="copy-verdict" title="Copy Verdict">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Action:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span>${escapeHTML(i.action || 'None')}</span>
-                        <span id="copy-action" title="Copy Action">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Detected Engines:</div>
-                    <div style="display: flex; align-items: center; gap: 10px; line-height: 1.8;">
-                        <div>${engineHtml}</div>
-                        <span id="copy-engines" title="Copy Engines" style="margin-left: 5px;">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">Original Folder:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 0.7rem; color: var(--muted);">${escapeHTML(i.originalFolder || 'Unknown')}</span>
-                        <span id="copy-folder" title="Copy Folder ID">${copySvg}</span>
-                    </div>
-                    <div class="detail-label">IP Address:</div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="color: var(--warn); font-family: monospace;">${escapeHTML(i.ip || 'N/A')}</span>
-                        <span id="copy-ip" title="Copy IP Address">${copySvg}</span>
-                    </div>`;
-
-                const setCopy = (id, val) => { 
-                    const el = document.getElementById(id);
-                    if (el) el.onclick = (e) => { e.stopPropagation(); navigator.clipboard.writeText(`"${val}"`); addLog(`Forensic Copy: ${id.replace('copy-','')} captured.`); showToast(); };
-                };
-
-                setCopy('copy-subject', i.subject);
-                setCopy('copy-score', i.score);
-                setCopy('copy-received', `${d} ${t}`);
-                setCopy('copy-from', i.sender);
-                setCopy('copy-to', i.to || 'N/A');
-                setCopy('copy-cc', i.cc || 'N/A');
-                setCopy('copy-verdict', cat);
-                setCopy('copy-action', i.action);
-                setCopy('copy-engines', i.tier || 'None');
-                setCopy('copy-folder', i.originalFolder);
-                setCopy('copy-ip', i.ip || 'N/A');
-
-                document.getElementById('header-text').textContent = forensics.fullHeaders || "No header information available.";
-                detModal.style.display = 'flex';
-            };
-
-            el.oncontextmenu = (e) => {
-                e.preventDefault();
-                if (!selectedIds.has(itemId)) {
-                    selectedIds.clear();
-                    selectedIds.add(itemId);
-                    lastSelectedIndex = itemIdx;
-                    document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
-                }
-                const menu = document.getElementById('ctx-menu');
-                const isSafe = (cat === 'safe');
-                const prefix = isSafe ? 'Mark As Spam: ' : 'Release & Whitelist: ';
-                document.getElementById('rel-email').textContent = prefix + 'Email Address Only';
-                document.getElementById('rel-ip').textContent = prefix + 'IP Address Only';
-                document.getElementById('rel-domain').textContent = prefix + 'Domain Only';
-                document.getElementById('rel-combo').textContent = prefix + 'IP Address and Domain Combination';
-                menu.style.display = 'block';
-                menu.style.left = e.pageX + 'px';
-                menu.style.top = e.pageY + 'px';
-            };
+        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { 
+            const key = c.dataset.key;
+            const activeCount = Object.values(currentToggles).filter(v => v).length;
+            if (!c.checked && activeCount <= 1) { c.checked = true; return; }
+            currentToggles[key] = c.checked;
+            if (!c.checked) {
+                rebalanceWeights(key, 0);
+            } else {
+                const others = Object.keys(currentToggles).filter(k => k !== key && currentToggles[k]);
+                const target = Math.max(5, Math.floor(100 / (others.length + 1)));
+                rebalanceWeights(key, target);
+            }
+            renderSensitivityUI(); 
         });
+        document.querySelectorAll('.w-slider').forEach(s => s.oninput = (e) => { rebalanceWeights(e.target.dataset.key, parseInt(e.target.value)); renderSensitivityUI(); });
+        document.getElementById('verdict-threshold-slider').value = currentSpamThreshold;
+        document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%';
     }
 
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.key === 'a') {
-            e.preventDefault();
-            const cat = document.querySelector('.stat-card.active')?.id.replace('card-', '') || 'malicious';
-            const items = (stats[cat] || []).slice(-100);
-            selectedIds.clear();
-            items.forEach(i => selectedIds.add(i.entryId));
-            document.querySelectorAll('.list-item').forEach(item => item.classList.add('selected'));
+    async function handleAction(type) {
+        const activeCard = document.querySelector('.stat-card.active');
+        const activeCat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
+        const toProcess = []; for (const cat in stats) stats[cat].forEach(i => { if(selectedIds.has(i.entryId)) toProcess.push(i); });
+        if (!toProcess.length) return;
+        if (toProcess.length === 1) {
+            const seed = toProcess[0]; const val = (type === 'email') ? seed.sender : (type === 'ip') ? seed.ip : (type === 'domain') ? seed.domain : `${seed.ip}|${seed.domain}`;
+            ['malicious','suspicious','spam','safe'].forEach(c => { stats[c].forEach(other => {
+                let match = false; if (type === 'email' && other.sender === val) match = true; else if (type === 'ip' && other.ip === val) match = true; else if (type === 'domain' && other.domain === val) match = true; else if (type === 'combo' && `${other.ip}|${other.domain}` === val) match = true;
+                if (match && !toProcess.find(x => x.entryId === other.entryId)) toProcess.push(other);
+            }); });
+        }
+        toProcess.forEach(i => { pendingActions.add(i.entryId); selectedIds.delete(i.entryId); });
+        lastRenderedJson = ""; renderList();
+        if (activeCat === 'safe') {
+            const bls = toProcess.map(i => ({ type, value: (type==='email'?i.sender:type==='ip'?i.ip:type==='domain'?i.domain:`${i.ip}|${i.domain}`) }));
+            await api.quarantineEmail({ entryIds: toProcess.map(i=>i.entryId), blacklistEntries: bls });
+        } else {
+            const wls = toProcess.map(i => ({ type, value: (type==='email'?i.sender:type==='ip'?i.ip:type==='domain'?i.domain:`${i.ip}|${i.domain}`) }));
+            await api.releaseEmail({ entryIds: toProcess.map(i=>i.entryId), whitelistEntries: wls, originalFolders: toProcess.map(i=>i.originalFolder), unreads: toProcess.map(i=>i.unread) });
+        }
+        setTimeout(() => { toProcess.forEach(i => pendingActions.delete(i.entryId)); lastRenderedJson = ""; renderList(); }, 30000);
+    }
+
+    document.getElementById('ctx-email').onclick = () => handleAction('email');
+    document.getElementById('ctx-ip').onclick = () => handleAction('ip');
+    document.getElementById('ctx-domain').onclick = () => handleAction('domain');
+    document.getElementById('ctx-combo').onclick = () => handleAction('combo');
+    document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
+    document.getElementById('verdict-threshold-slider').oninput = (e) => { currentSpamThreshold = parseInt(e.target.value); document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%'; document.getElementById('verdict-description').textContent = `Emails scoring ${currentSpamThreshold}% or lower will be marked as SPAM.`; };
+    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if(cfg.rubrics){ currentWeights = { ...cfg.rubrics.weights }; currentToggles = { ...cfg.rubrics.toggles }; currentSpamThreshold = cfg.rubrics.spamThresholdPercent || 50; } renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
+    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); document.getElementById('sensitivity-modal').style.display = 'none'; };
+    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
+    document.getElementById('reset-sensitivity-defaults').onclick = () => { currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; currentSpamThreshold = 50; renderSensitivityUI(); };
+    
+    document.getElementById('settings-btn').onclick = async () => { 
+        const cfg = await api.getConfig();
+        document.getElementById('vt-api-key').value = cfg.vtApiKey || '';
+        document.getElementById('spam-keywords').value = (cfg.spamKeywords || []).join('\n');
+        document.getElementById('wl-emails').value = (cfg.whitelist?.emails || []).join('\n');
+        document.getElementById('bl-emails').value = (cfg.blacklist?.emails || []).join('\n');
+        document.getElementById('wl-ips').value = (cfg.whitelist?.ips || []).join('\n');
+        document.getElementById('bl-ips').value = (cfg.blacklist?.ips || []).join('\n');
+        document.getElementById('wl-domains').value = (cfg.whitelist?.domains || []).join('\n');
+        document.getElementById('bl-domains').value = (cfg.blacklist?.domains || []).join('\n');
+        document.getElementById('wl-combos').value = (cfg.whitelist?.combos || []).join('\n');
+        document.getElementById('bl-combos').value = (cfg.blacklist?.combos || []).join('\n');
+        document.getElementById('settings-modal').style.display = 'flex';
+    };
+    document.getElementById('save-settings').onclick = async () => {
+        const vt = document.getElementById('vt-api-key').value;
+        const kw = document.getElementById('spam-keywords').value.split('\n').filter(Boolean);
+        const wle = document.getElementById('wl-emails').value.split('\n').filter(Boolean);
+        const ble = document.getElementById('bl-emails').value.split('\n').filter(Boolean);
+        const wli = document.getElementById('wl-ips').value.split('\n').filter(Boolean);
+        const bli = document.getElementById('bl-ips').value.split('\n').filter(Boolean);
+        const wld = document.getElementById('wl-domains').value.split('\n').filter(Boolean);
+        const bld = document.getElementById('bl-domains').value.split('\n').filter(Boolean);
+        const wlc = document.getElementById('wl-combos').value.split('\n').filter(Boolean);
+        const blc = document.getElementById('bl-combos').value.split('\n').filter(Boolean);
+        await api.setVtKey(vt); await api.setSpamKeywords(kw);
+        await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: wlc });
+        await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: blc });
+        document.getElementById('settings-modal').style.display = 'none';
+    };
+    document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
+    document.getElementById('scanner-toggle').onclick = async () => { const cfg = await api.getConfig(); api.setEnabled(!cfg.enabled); };
+    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
+    document.getElementById('reset-btn').onclick = () => api.resetApp();
+    document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); await api.setHistoryEnabled(!cfg.historyScanEnabled); document.getElementById('history-toggle').classList.toggle('active', !cfg.historyScanEnabled); };
+    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); selectedIds.clear(); lastRenderedJson = ""; renderList(); });
+    api.onLiveLog(addLog);
+    api.onOutlookScanUpdate(d => {
+        addLog(`${d.status}: ${d.details}`);
+        if (d.status === 'SPAM FILTERED' || d.action === 'Quarantined') {
+            api.getStats().then(updateDashboard);
         }
     });
-
-    function getSelectedItems() {
-        const results = [];
-        for (const cat in stats) {
-            stats[cat].forEach(i => {
-                if (selectedIds.has(i.entryId)) results.push(i);
-            });
+    api.onEmailMoved(d => {
+        if (d.status === 'Finished' || d.status === 'Error') {
+            pendingActions.delete(d.entryId);
+            lastRenderedJson = "";
+            api.getStats().then(updateDashboard);
         }
-        return results;
-    }
-
-    function addLog(msg) { const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
-    document.getElementById('copy-headers-icon').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); showToast(); };
-    document.getElementById('read-email-btn').onclick = async () => { 
-        if (!currentDetailEntryId) return;
-        const forensics = await api.getForensics(currentDetailEntryId);
-        const bodyText = document.getElementById('body-text'); 
-        const bodyModal = document.getElementById('body-modal'); 
-        const item = getSelectedItems().find(it => it.entryId === currentDetailEntryId);
-        document.getElementById('body-subject').textContent = item ? item.subject : 'Email Content';
-        bodyText.textContent = forensics.body || "No email content available."; 
-        bodyText.style.direction = /[\u0590-\u05FF]/.test(forensics.body || "") ? 'rtl' : 'ltr'; 
-        bodyText.style.textAlign = /[\u0590-\u05FF]/.test(forensics.body || "") ? 'right' : 'left'; 
-        bodyModal.style.display = 'flex'; 
-    };
-    document.getElementById('close-body-btn').onclick = () => document.getElementById('body-modal').style.display = 'none';
-    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if (cfg.rubrics?.weights) currentWeights = { ...cfg.rubrics.weights }; if (cfg.rubrics?.toggles) currentToggles = { ...cfg.rubrics.toggles }; renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
-    document.getElementById('reset-sensitivity-defaults').onclick = () => { 
-        currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; 
-        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; 
-        renderSensitivityUI(); 
-        addLog("Sensitivity reset to new system defaults."); 
-    };
-    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
-    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles }); document.getElementById('sensitivity-modal').style.display = 'none'; addLog("Sensitivity updated."); };
-    document.getElementById('scanner-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.enabled; api.setEnabled(next); updateToggleUi(next); };
-    document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.historyScanEnabled; api.setHistoryEnabled(next); document.getElementById('history-toggle').classList.toggle('active', next); };
-    document.getElementById('schedule-btn').onclick = async () => { const cfg = await api.getConfig(); const pwr = await api.checkPowerStatus(); document.getElementById('power-warning').style.display = pwr.safe ? 'none' : 'block'; document.getElementById('sched-enabled').checked = cfg.schedule?.enabled || false; document.getElementById('sched-datetime').value = cfg.schedule?.datetime || ""; document.getElementById('schedule-modal').style.display = 'flex'; };
-    document.getElementById('fix-power-btn').onclick = () => { api.overridePowerPlan(); document.getElementById('power-warning').style.display = 'none'; addLog("Power plan adjusted."); };
-    document.getElementById('save-schedule').onclick = () => { const enabled = document.getElementById('sched-enabled').checked; const datetime = document.getElementById('sched-datetime').value; if (enabled && !datetime) return; api.setSchedule({ enabled, datetime }); document.getElementById('schedule-modal').style.display = 'none'; addLog("Schedule updated."); };
-    document.getElementById('close-schedule').onclick = () => document.getElementById('schedule-modal').style.display = 'none';
-    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
-    document.getElementById('close-details-btn').onclick = () => { detModal.style.display = 'none'; currentDetailEntryId = null; };
-    document.getElementById('close-details-x').onclick = () => { detModal.style.display = 'none'; currentDetailEntryId = null; };
-    document.getElementById('settings-btn').onclick = async () => { 
-        const cfg = await api.getConfig(); 
-        document.getElementById('vt-api-key').value = cfg.vtApiKey; 
-        document.getElementById('spam-keywords').value = cfg.spamKeywords.join('\n'); 
-        document.getElementById('spam-threshold').value = cfg.rubrics?.threshold || 5; 
-        document.getElementById('wl-emails').value = (cfg.whitelist?.emails || []).join('\n');
-        document.getElementById('wl-ips').value = (cfg.whitelist?.ips || []).join('\n');
-        document.getElementById('wl-domains').value = (cfg.whitelist?.domains || []).join('\n');
-        document.getElementById('wl-combos').value = (cfg.whitelist?.combos || []).join('\n');
-        document.getElementById('bl-emails').value = (cfg.blacklist?.emails || []).join('\n');
-        document.getElementById('bl-ips').value = (cfg.blacklist?.ips || []).join('\n');
-        document.getElementById('bl-domains').value = (cfg.blacklist?.domains || []).join('\n');
-        document.getElementById('bl-combos').value = (cfg.blacklist?.combos || []).join('\n');
-        document.getElementById('settings-modal').style.display = 'flex'; 
-    };
-    document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display='none';
-    document.getElementById('save-settings').onclick = async () => { 
-        let threshold = parseInt(document.getElementById('spam-threshold').value);
-        if (isNaN(threshold) || threshold < 1) threshold = 5;
-        if (threshold > 100) threshold = 100;
-
-        const wl = { 
-            emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v), 
-            ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v), 
-            domains: document.getElementById('wl-domains').value.split('\n').map(v=>v.trim()).filter(v=>v), 
-            combos: document.getElementById('wl-combos').value.split('\n').map(v=>v.trim()).filter(v=>v) 
-        }; 
-        const bl = {
-            emails: document.getElementById('bl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            ips: document.getElementById('bl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            domains: document.getElementById('bl-domains').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            combos: document.getElementById('bl-combos').value.split('\n').map(v=>v.trim()).filter(v=>v)
-        };
-        api.setVTKey(document.getElementById('vt-api-key').value); 
-        api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k)); 
-        const cfg = await api.getConfig();
-        api.setRubrics({ ...cfg.rubrics, threshold: threshold }); 
-        api.setWhitelist(wl); 
-        api.setBlacklist(bl);
-        document.getElementById('settings-modal').style.display='none'; 
-        addLog("Settings updated."); 
-    };
-    document.getElementById('backup-btn').onclick = async () => { if (await api.backupConfig()) addLog("Backup completed."); };
-    document.getElementById('restore-btn').onclick = async () => { if (await api.restoreConfig()) addLog("App restarting..."); };
-    document.getElementById('reset-btn').onclick = () => document.getElementById('reset-modal').style.display = 'flex';
-    document.getElementById('cancel-reset').onclick = () => document.getElementById('reset-modal').style.display = 'none';
-    document.getElementById('confirm-reset').onclick = () => api.resetApp();
-    
-    async function handleContextMenuAction(type) {
-        const activeCat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
-        const items = getSelectedItems();
-        if (!items.length) return;
-        
-        const toProcess = [...items];
-        const blacklistEntries = [];
-        const whitelistEntries = [];
-
-        // CASCADE LOGIC: Find matching items in ALL categories
-        if (items.length === 1) {
-            const seed = items[0];
-            const criteriaValue = (type === 'email') ? seed.sender : (type === 'ip') ? seed.ip : (type === 'domain') ? seed.domain : `${seed.ip}|${seed.domain}`;
-            
-            ['malicious', 'suspicious', 'spam', 'safe'].forEach(cat => {
-                (stats[cat] || []).forEach(other => {
-                    let match = false;
-                    if (type === 'email' && other.sender === criteriaValue) match = true;
-                    else if (type === 'ip' && other.ip === criteriaValue) match = true;
-                    else if (type === 'domain' && other.domain === criteriaValue) match = true;
-                    else if (type === 'combo' && `${other.ip}|${other.domain}` === criteriaValue) match = true;
-                    
-                    if (match && !toProcess.find(x => x.entryId === other.entryId)) {
-                        toProcess.push(other);
-                    }
-                });
-            });
-            
-            if (toProcess.length > items.length) {
-                addLog(`CASCADE: Found ${toProcess.length - items.length} matching items in the dashboard.`);
-            }
-        }
-
-        // Instant UI feedback
-        toProcess.forEach(i => {
-            pendingActions.add(i.entryId);
-            selectedIds.delete(i.entryId);
-            for (const cat in stats) {
-                const idx = stats[cat].findIndex(it => it.entryId === i.entryId);
-                if (idx !== -1) { stats[cat].splice(idx, 1); break; }
-            }
-        });
-        renderList();
-
-        if (activeCat === 'safe') {
-            addLog(`Marking ${toProcess.length} items as SPAM in bulk...`);
-            const entryIds = toProcess.map(i => i.entryId);
-            const bls = toProcess.map(i => {
-                if (type === 'email') return { type: 'email', value: i.sender };
-                if (type === 'ip') return { type: 'ip', value: i.ip };
-                if (type === 'domain') return { type: 'domain', value: i.domain };
-                return { type: 'combo', value: `${i.ip}|${i.domain}` };
-            });
-            await api.quarantineEmail({ entryIds, blacklistEntries: bls });
-        } else {
-            addLog(`Initiating bulk release for ${toProcess.length} items...`);
-            const entryIds = toProcess.map(i => i.entryId);
-            const originalFolders = toProcess.map(i => i.originalFolder);
-            const unreads = toProcess.map(i => i.unread);
-            const wls = toProcess.map(i => {
-                if (type === 'email') return { type: 'email', value: i.sender };
-                if (type === 'ip') return { type: 'ip', value: i.ip };
-                if (type === 'domain') return { type: 'domain', value: i.domain };
-                return { type: 'combo', value: `${i.ip}|${i.domain}` };
-            });
-            await api.releaseEmail({ entryIds, whitelistEntries: wls, originalFolders, unreads });
-        }
-        
-        setTimeout(() => { toProcess.forEach(i => pendingActions.delete(i.entryId)); }, 30000);
-    }
-    document.getElementById('rel-email').onclick = () => handleContextMenuAction('email');
-    document.getElementById('rel-ip').onclick = () => handleContextMenuAction('ip');
-    document.getElementById('rel-domain').onclick = () => handleContextMenuAction('domain');
-    document.getElementById('rel-combo').onclick = () => handleContextMenuAction('combo');
-    function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
-    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); selectedIds.clear(); lastSelectedIndex = -1; renderList(); });
-    document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
-    function updateToggleUi(en) { const b = document.getElementById('scanner-toggle'); if(b) { b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } }
-    api.onOutlookScanUpdate((data) => addLog(`${data.status}: ${data.details}`));
-    api.onLiveLog((msg) => addLog(msg));
-    api.onStatusSync(updateToggleUi);
-    api.onEmailReleased((data) => { if (data && data.ok) { addLog(`SUCCESS: Item ${data.entryId.substring(0,8)}... restored.`); } else if (data) { addLog(`FAILURE: ${data.message || 'Unknown error during release'}`); } });
-    api.onStatsUpdate((data) => { if (data && data.full) updateDashboard(data.stats); else if (data && data.delta) { ['malicious','suspicious','spam','safe'].forEach(c => { if (data.stats[c]) stats[c].push(...data.stats[c]); }); updateDashboard(stats); } });
-    async function init() { const cfg = await api.getConfig(); updateToggleUi(cfg.enabled); if (cfg.historyScanEnabled) { document.getElementById('history-toggle').classList.add('active'); } if (cfg.columnWidths) { colWidths = cfg.columnWidths; applyColWidths(); } updateDashboard(await api.getStats()); }
+    });
+    api.onStatusSync(en => { const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } });
+    api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); else if (d.delta) { for(const c in d.stats) { if(!stats[c]) stats[c]=[]; stats[c].push(...d.stats[c]); } updateDashboard(stats); } });
+    async function init() { const cfg = await api.getConfig(); applyColWidths(); document.getElementById('history-toggle').classList.toggle('active', !!cfg.historyScanEnabled); updateDashboard(await api.getStats()); }
     init();
   </script>
 </body>
