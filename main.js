@@ -129,75 +129,15 @@ const Store = require('electron-store');
 const store = new Store({
     cwd: SHARED_DATA_PATH, name: 'config', clearInvalidConfig: true,
     defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, totals: { spam: 0, safe: 0, malicious: 0, suspicious: 0 }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, blacklist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
-
 });
-
-const rubrics = store.get('rubrics');
-if (rubrics && rubrics.weights && (rubrics.weights.alignment === 15 || rubrics.weights.dmarc === 20 || rubrics.weights.dmarc === 22 || !rubrics.weights.rbl)) {
-    rubrics.weights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 };
-    rubrics.toggles.rbl = true;
-    store.set('rubrics', rubrics);
-}
-
-async function logLine(section, details = '', skipBroadcast = false) {
-    const now = new Date();
-    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    const role = isServiceMode ? 'SVC' : 'UI';
-    const payload = `[${ts}] [${role}] [${clipString(section, 64)}] ${clipString(String(details || ''), 4000)}`;
-    try {
-        await fsPromises.mkdir(LOG_DIR, { recursive: true });
-        try {
-            const stats = await fsPromises.stat(DEBUG_LOG_PATH);
-            if (stats.size > MAX_LOG_SIZE) {
-                const oldPath = `${DEBUG_LOG_PATH}.old`;
-                try { await fsPromises.unlink(oldPath); } catch {}
-                await fsPromises.rename(DEBUG_LOG_PATH, oldPath);
-            }
-        } catch {}
-        await fsPromises.appendFile(DEBUG_LOG_PATH, payload + '\n', 'utf8');
-        if (isServiceMode) console.log(payload);
-        if (!skipBroadcast) {
-            const displayMsg = `${clipString(section, 64)}: ${clipString(String(details || ''), 4000)}`;
-            if (isServiceMode) broadcastToUi({ type: 'log', message: displayMsg });
-            else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('live-log', displayMsg);
-        }
-    } catch {}
-}
-
-function broadcastToUi(data) {
-    if (!isServiceMode) return;
-    const msg = `${JSON.stringify(data)}\n`;
-    activeConnections.forEach(socket => {
-        if (!socket || socket.destroyed || !socket.writable) { activeConnections.delete(socket); return; }
-        try { socket.write(msg); } catch { activeConnections.delete(socket); }
-    });
-}
-
-process.on('uncaughtException', async error => { await logLine('CRITICAL', error.stack || error.message || String(error), true); await cleanupProcesses(); });
-process.on('unhandledRejection', async reason => { await logLine('REJECTION', reason.stack || String(reason), true); await cleanupProcesses(); });
-
-async function acquireFileLock(lockPath, timeoutMs = 10000) {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-        try {
-            const h = await fsPromises.open(lockPath, 'wx');
-            return async () => { try { await h.close(); } catch {} try { await fsPromises.unlink(lockPath); } catch {} };
-        } catch (e) {
-            if (e.code !== 'EEXIST') throw e;
-            try { const s = await fsPromises.stat(lockPath); if (Date.now() - s.mtimeMs > 30000) { try { await fsPromises.unlink(lockPath); } catch {} } } catch {}
-            await delay(150 + Math.floor(Math.random() * 50));
-        }
-    }
-    throw new Error('LOCK_TIMEOUT');
-}
 
 async function forceReloadStore() {
     try {
         ensureConfigIntegrity();
         const raw = await fsPromises.readFile(store.path, 'utf8');
         const p = safeJsonParse(raw);
-        if (p) store.store = { ...store.store, ...p };
-    } catch {}
+        store.store = p || {}; 
+    } catch { store.store = {}; }
 }
 
 async function safeStoreUpdate(mutator) {
@@ -248,12 +188,6 @@ function buildScannerCommandPayload(mode) {
     return { mode: mode === 'FullScan' ? 'FullScan' : 'OnAccess', processedIds: store.get('processedIds'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), blacklist: store.get('blacklist') || { emails: [], ips: [], domains: [], combos: [] }, vtKey: vtSessionKey || decryptKey(store.get('vtApiKey')), privacyMode: store.get('privacyMode'), authToken: finalToken };
 }
 
-function summarizeEvidence(b64) {
-    if (typeof b64 !== 'string' || !b64.length) return { hash: '', size: 0 };
-    const capped = b64.length > 524288 ? b64.slice(0, 524288) : b64;
-    return { hash: crypto.createHash('sha256').update(capped, 'utf8').digest('hex'), size: Buffer.byteLength(b64, 'utf8') };
-}
-
 function sanitizeScannerResult(r) {
     const s = (v, l) => clipString(String(v || ''), l);
     const decodeB64 = (b) => {
@@ -280,6 +214,55 @@ function sanitizeScannerResult(r) {
         to: s(r.to, 512),
         cc: s(r.cc, 512)
     };
+}
+
+async function logLine(section, details = '', skipBroadcast = false) {
+    const now = new Date();
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const role = isServiceMode ? 'SVC' : 'UI';
+    const payload = `[${ts}] [${role}] [${clipString(section, 64)}] ${clipString(String(details || ''), 4000)}`;
+    try {
+        await fsPromises.mkdir(LOG_DIR, { recursive: true });
+        try {
+            const stats = await fsPromises.stat(DEBUG_LOG_PATH);
+            if (stats.size > MAX_LOG_SIZE) {
+                const oldPath = `${DEBUG_LOG_PATH}.old`;
+                try { await fsPromises.unlink(oldPath); } catch {}
+                await fsPromises.rename(DEBUG_LOG_PATH, oldPath);
+            }
+        } catch {}
+        await fsPromises.appendFile(DEBUG_LOG_PATH, payload + '\n', 'utf8');
+        if (isServiceMode) console.log(payload);
+        if (!skipBroadcast) {
+            const displayMsg = `${clipString(section, 64)}: ${clipString(String(details || ''), 4000)}`;
+            if (isServiceMode) broadcastToUi({ type: 'log', message: displayMsg });
+            else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('live-log', displayMsg);
+        }
+    } catch {}
+}
+
+function broadcastToUi(data) {
+    if (!isServiceMode) return;
+    const msg = `${JSON.stringify(data)}\n`;
+    activeConnections.forEach(socket => {
+        if (!socket || socket.destroyed || !socket.writable) { activeConnections.delete(socket); return; }
+        try { socket.write(msg); } catch { activeConnections.delete(socket); }
+    });
+}
+
+async function acquireFileLock(lockPath, timeoutMs = 10000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        try {
+            const h = await fsPromises.open(lockPath, 'wx');
+            return async () => { try { await h.close(); } catch {} try { await fsPromises.unlink(lockPath); } catch {} };
+        } catch (e) {
+            if (e.code !== 'EEXIST') throw e;
+            try { const s = await fsPromises.stat(lockPath); if (Date.now() - s.mtimeMs > 30000) { try { await fsPromises.unlink(lockPath); } catch {} } } catch {}
+            await delay(150 + Math.floor(Math.random() * 50));
+        }
+    }
+    throw new Error('LOCK_TIMEOUT');
 }
 
 async function startPipeServer() {
@@ -341,6 +324,22 @@ function clearTimers() {
     [scanWatchdogTimer, uiReconnectTimer, outlookStatusInterval, serviceWatchdogInterval, uiStatsInterval].forEach(t => { if (t) isServiceMode ? clearInterval(t) : clearTimeout(t); });
 }
 
+async function pruneForensics(limit = 2000) {
+    try {
+        const files = await fsPromises.readdir(FORENSICS_DIR);
+        if (files.length <= limit) return;
+        const fileInfos = [];
+        for (const file of files) {
+            const fPath = path.join(FORENSICS_DIR, file);
+            try { const s = await fsPromises.stat(fPath); fileInfos.push({ name: file, path: fPath, time: s.mtimeMs }); } catch {}
+        }
+        fileInfos.sort((a, b) => b.time - a.time);
+        const toDelete = fileInfos.slice(limit);
+        for (const f of toDelete) { await fsPromises.unlink(f.path).catch(() => {}); }
+        if (toDelete.length > 0) await logLine('MAINTENANCE', `Pruned ${toDelete.length} old forensic files.`);
+    } catch (e) { await logLine('MAINTENANCE_ERROR', e.message, true); }
+}
+
 async function startServiceWatchdog() {
     await startPipeServer(); await checkOutlookStatus();
     outlookStatusInterval = setInterval(checkOutlookStatus, 10000);
@@ -354,7 +353,7 @@ async function startServiceWatchdog() {
         if (isScanning && now - lastHeartbeat > 300000) { await cleanupProcesses(); isScanning = false; }
         if (!isScanning) {
             await forceReloadStore();
-            
+            await pruneForensics(2000); // KEEP FOLDER LEAN
             const sched = store.get('schedule');
             if (sched && sched.enabled && sched.datetime) {
                 const target = new Date(sched.datetime).getTime();
@@ -365,7 +364,6 @@ async function startServiceWatchdog() {
                     return;
                 }
             }
-
             if (store.get('enabled') && now - (store.get('lastScanStartTime') || 0) > 300000) runOutlookScanner(store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess');
         }
     }, 15000);
@@ -392,12 +390,13 @@ function sendCommandToService(p) {
 }
 
 function hasActiveOwnedService() {
-    try { const raw = fs.readFileSync(SERVICE_LEASE_PATH, 'utf8'); const l = safeJsonParse(raw); return l && isProcessAlive(l.pid) && l.ownerPid === process.pid; } catch { return false; }
+    return serviceSpawnPid > 0 && isProcessAlive(serviceSpawnPid);
 }
 
 function spawnService(force = false) {
     if (isServiceMode || serviceSpawnInFlight) return;
-    const now = Date.now(); if (now - lastServiceSpawn < 5000) return;
+    const now = Date.now(); if (now - lastServiceSpawn < 5000 && !force) return;
+    if (serviceSpawnPid > 0 && isProcessAlive(serviceSpawnPid) && force) { try { process.kill(serviceSpawnPid); } catch {} }
     if (!serviceSession || force) serviceSession = { pipeName: createPipeName(), token: createAuthToken() };
     lastServiceSpawn = now; serviceSpawnInFlight = true;
     logLine('UI', `Spawning service process (force=${force})...`);
@@ -405,16 +404,8 @@ function spawnService(force = false) {
     env.SVC_HANDSHAKE = JSON.stringify({ pipeName: serviceSession.pipeName, authToken: serviceSession.token, ownerPid: process.pid });
     const c = spawn(process.execPath, [APP_ROOT, '--service', '--disable-gpu', '--use-gl=disabled'], { detached: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env });
     serviceSpawnPid = c.pid;
-    c.stdout.on('data', d => {
-        const s = d.toString().trim();
-        if (s) logLine('SVC_OUT', s);
-        else logLine('SVC_OUT', `<WS:${d.length}>`);
-    });
-    c.stderr.on('data', d => {
-        const s = d.toString().trim();
-        if (s) logLine('SVC_ERR', s);
-        else logLine('SVC_ERR', `<WS:${d.length}>`);
-    });
+    c.stdout.on('data', d => { const s = d.toString().trim(); if (s) logLine('SVC_OUT', s); });
+    c.stderr.on('data', d => { const s = d.toString().trim(); if (s) logLine('SVC_ERR', s); });
     c.once('exit', (code, signal) => { 
         logLine('UI', `Service process exited (code=${code}, signal=${signal})`);
         if (serviceSpawnPid === c.pid) serviceSpawnPid = 0; 
@@ -425,7 +416,7 @@ function spawnService(force = false) {
 let isConnecting = false;
 function connectToService() {
     if (isServiceMode || isConnecting) return;
-    if (!serviceSession) spawnService(true);
+    if (!serviceSession || !hasActiveOwnedService()) spawnService(true);
     if (!serviceSession) return;
     isConnecting = true; destroyUiPipeClient();
     const c = net.connect(serviceSession.pipeName); uiPipeClient = c;
@@ -434,7 +425,7 @@ function connectToService() {
         isConnecting = false; if (uiPipeClient !== c) return; destroyUiPipeClient();
         if (!auth) serviceConnectFailures++; else serviceConnectFailures = 0;
         const rot = !auth && serviceConnectFailures >= 3;
-        if (rot || !hasActiveOwnedService()) spawnService(rot);
+        if (rot || !hasActiveOwnedService()) spawnService(true);
         scheduleUiReconnect(rot ? 1500 : UI_RECONNECT_INTERVAL);
     };
     c.on('connect', () => { try { c.write(JSON.stringify({ type: 'auth', token: serviceSession.token }) + '\n'); } catch { dis(); } });
@@ -448,6 +439,7 @@ function connectToService() {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 if (m.type === 'scan-update' && m.data) mainWindow.webContents.send('outlook-scan-update', m.data);
                 if (m.type === 'log') mainWindow.webContents.send('live-log', m.message);
+                if (m.type === 'stats-delta') mainWindow.webContents.send('stats-update', { delta: true, stats: m.stats });
             }
         }
     });
@@ -473,36 +465,37 @@ async function runOutlookScanner(mode = 'OnAccess') {
             const p = safeJsonParse(line); if (!p) continue;
             if (p.type === 'heartbeat') { lastHeartbeat = Date.now(); continue; }
             const r = sanitizeScannerResult(p); 
-            
             if (r.entryId) {
                 const fData = { fullHeaders: r.fullHeaders, body: r.body };
                 forensicCache.set(r.entryId, fData);
                 if (forensicCache.size > 1000) { const firstKey = forensicCache.keys().next().value; forensicCache.delete(firstKey); }
                 fs.writeFile(getForensicFilePath(r.entryId), JSON.stringify(fData), () => {});
             }
-
             const uiP = { ...r }; delete uiP.fullHeaders; delete uiP.body; broadcastToUi({ type: 'scan-update', data: uiP });
             if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'CAUTION'].includes(r.status)) {
                 if (!r.entryId) continue;
+                let finalCat = 'suspicious';
                 await safeStoreUpdate(s => {
                     if (!s.processedIds) s.processedIds = [];
                     if (s.processedIds.includes(r.entryId)) return;
                     s.processedIds.push(r.entryId);
                     if (s.processedIds.length > 5000) s.processedIds = s.processedIds.slice(-5000);
                     if (!s.stats) s.stats = { spam: [], safe: [], malicious: [], suspicious: [] };
-                    let cat = 'suspicious';
                     const v = r.verdict.toLowerCase();
-                    if (v.includes('malware') || v.includes('malicious')) cat = 'malicious';
-                    else if (v.includes('spam')) cat = 'spam';
-                    else if (v.includes('safe') || v.includes('clean')) cat = 'safe';
-                    else if (v.includes('suspicious') || v.includes('caution')) cat = 'suspicious';
-                    if (!Array.isArray(s.stats[cat])) s.stats[cat] = [];
+                    if (v.includes('malware') || v.includes('malicious')) finalCat = 'malicious';
+                    else if (v.includes('spam')) finalCat = 'spam';
+                    else if (v.includes('safe') || v.includes('clean')) finalCat = 'safe';
+                    else if (v.includes('suspicious') || v.includes('caution')) finalCat = 'suspicious';
+                    if (!Array.isArray(s.stats[finalCat])) s.stats[finalCat] = [];
                     if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
-                    s.totals[cat] = (s.totals[cat] || 0) + 1;
-
-                    s.stats[cat].push({ subject: r.details, date: r.timestamp, entryId: r.entryId, sender: r.sender, ip: r.ip, domain: r.domain, originalFolder: r.originalFolder, score: r.score, action: r.action, tier: r.tier, unread: r.unread, scanType: r.scanType, to: r.to, cc: r.cc });
-                    if (s.stats[cat].length > 1000) s.stats[cat] = s.stats[cat].slice(-1000);
+                    s.totals[finalCat] = (s.totals[finalCat] || 0) + 1;
+                    s.stats[finalCat].push({ subject: r.details, date: r.timestamp, entryId: r.entryId, sender: r.sender, ip: r.ip, domain: r.domain, originalFolder: r.originalFolder, score: r.score, action: r.action, tier: r.tier, unread: r.unread, scanType: r.scanType, to: r.to, cc: r.cc });
+                    if (s.stats[finalCat].length > 1000) s.stats[finalCat] = s.stats[finalCat].slice(-1000);
                 });
+                const deltaItem = { subject: r.details, date: r.timestamp, entryId: r.entryId, sender: r.sender, ip: r.ip, domain: r.domain, originalFolder: r.originalFolder, score: r.score, action: r.action, tier: r.tier, unread: r.unread, scanType: r.scanType, to: r.to, cc: r.cc };
+                const deltaStats = { malicious: [], suspicious: [], spam: [], safe: [] };
+                deltaStats[finalCat].push(deltaItem);
+                broadcastToUi({ type: 'stats-delta', stats: deltaStats });
                 await logLine('AUDIT', `[${r.scanType}] [${r.verdict}] ${r.details}`);
             }
         }
@@ -536,10 +529,11 @@ function createWindow() {
     mainWindow.loadFile(path.join(APP_ROOT, 'index.html'));
     mainWindow.on('close', e => { if (!isQuitting) { e.preventDefault(); mainWindow.hide(); } });
     mainWindow.on('resize', async () => { if (mainWindow && !mainWindow.isMaximized()) await safeStoreSet('windowBounds', mainWindow.getBounds()); });
-    mainWindow.once('ready-to-show', () => { 
+    mainWindow.once('ready-to-show', async () => { 
         if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
         syncProtectionStatus(!!store.get('enabled'));
-        uiStatsInterval = setInterval(async () => { if (mainWindow && mainWindow.isVisible()) { await forceReloadStore(); mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); } }, 5000); 
+        await forceReloadStore(); 
+        if (mainWindow && mainWindow.isVisible()) mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); 
     });
 }
 
@@ -564,31 +558,14 @@ app.on('ready', async () => {
                 if (h && h.authToken && h.pipeName) {
                     serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0;
                     await logLine('SVC', `Handshake successful from ENV. Pipe: ${servicePipeName}`);
-                    if (!(await acquireServiceLease())) {
-                        await logLine('SVC_ERROR', 'Failed to acquire service lease. Exiting.');
-                        app.exit(0);
-                    } else {
-                        await startServiceWatchdog();
-                    }
+                    if (!(await acquireServiceLease())) { app.exit(0); } else { await startServiceWatchdog(); }
                     return;
                 }
             }
-            logLine('SVC', 'Service mode active, waiting for handshake on stdin...');
-            const handshakeTimeout = setTimeout(() => { logLine('SVC_ERROR', 'Handshake timeout reached. No data on stdin or ENV. Exiting.'); app.exit(1); }, 30000);
-            let hBuf = ''; process.stdin.resume(); process.stdin.setEncoding('utf8');
+            process.stdin.resume(); process.stdin.setEncoding('utf8');
             process.stdin.on('data', async d => {
-                logLine('SVC_DEBUG', `Received data on stdin: ${clipString(d.toString(), 100)}`);
-                hBuf += d.toString();
-                while (hBuf.includes('\n')) {
-                    const parts = hBuf.split('\n'); const line = parts[0].trim(); hBuf = parts.slice(1).join('\n'); 
-                    if (!line) continue;
-                    const h = safeJsonParse(line);
-                    if (h && h.authToken && h.pipeName) { 
-                        clearTimeout(handshakeTimeout); serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0; 
-                        await logLine('SVC', `Handshake successful from STDIN. Pipe: ${servicePipeName}`); 
-                        if (!(await acquireServiceLease())) { await logLine('SVC_ERROR', 'Failed to acquire service lease. Exiting.'); app.exit(0); } else { await startServiceWatchdog(); }
-                    } else { await logLine('SVC_ERROR', `Invalid handshake payload: ${clipString(line, 200)}`); }
-                }
+                const h = safeJsonParse(d.toString());
+                if (h && h.authToken && h.pipeName) { serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0; if (!(await acquireServiceLease())) { app.exit(0); } else { await startServiceWatchdog(); } }
             });
         }
     } catch (e) { await logLine('BOOT_ERROR', e.stack || e.message); }
@@ -600,8 +577,7 @@ ipcMain.handle('get-config', async () => { await forceReloadStore(); return { en
 async function syncProtectionStatus(enabled) {
     if (tray) {
         tray.setImage(nativeImage.createFromPath(path.join(APP_ROOT, `tray_${enabled ? 'on' : 'off'}.png`)));
-        const cur = !!enabled;
-        tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Show Security Dashboard', click: () => { if (mainWindow) mainWindow.show(); } }, { label: cur ? 'Disable Microsoft Outlook Security' : 'Enable Microsoft Outlook Security', click: async () => { const next = !cur; await safeStoreSet('enabled', next); await syncProtectionStatus(next); } }, { type: 'separator' }, { label: 'Close Microsoft Outlook Security', click: async () => { isQuitting = true; await shutdown(0); } }]));
+        tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Show Dashboard', click: () => { if (mainWindow) mainWindow.show(); } }, { label: enabled ? 'Disable Security' : 'Enable Security', click: async () => { await safeStoreSet('enabled', !enabled); await syncProtectionStatus(!enabled); } }, { type: 'separator' }, { label: 'Close', click: async () => { isQuitting = true; await shutdown(0); } }]));
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.setIcon(path.join(APP_ROOT, `icon_${enabled ? 'on' : 'off'}.png`));
@@ -610,10 +586,10 @@ async function syncProtectionStatus(enabled) {
     sendCommandToService(enabled ? (store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess') : 'Stop');
     await checkOutlookStatus();
 }
-ipcMain.handle('set-enabled', async (e, v) => { if (typeof v !== 'boolean') return { ok: false }; const ok = await safeStoreSet('enabled', v); if (!ok) return { ok: false }; await syncProtectionStatus(v); return { ok: true }; });
-ipcMain.handle('set-history-enabled', async (e, v) => { if (typeof v !== 'boolean') return { ok: false }; const ok = await safeStoreSet('historyScanEnabled', v); if (!ok) return { ok: false }; await logLine('CONFIG', `History Scan: ${v ? 'ON' : 'OFF'}`); sendCommandToService(v ? 'FullScan' : (store.get('enabled') ? 'OnAccess' : 'Stop')); return { ok: true }; });
-ipcMain.handle('set-vt-key', async (e, k) => { const n = clipString(String(k || ''), 256); return await safeStoreSet('vtApiKey', encryptKey(n)) ? { ok: true } : { ok: false }; });
-ipcMain.handle('set-spam-keywords', async (e, k) => { return await safeStoreSet('spamKeywords', Array.isArray(k) ? k.map(v => clipString(v, 80)).filter(Boolean) : []) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-enabled', async (e, v) => { if (await safeStoreSet('enabled', v)) { await syncProtectionStatus(v); return { ok: true }; } return { ok: false }; });
+ipcMain.handle('set-history-enabled', async (e, v) => { if (await safeStoreSet('historyScanEnabled', v)) { sendCommandToService(v ? 'FullScan' : (store.get('enabled') ? 'OnAccess' : 'Stop')); return { ok: true }; } return { ok: false }; });
+ipcMain.handle('set-vt-key', async (e, k) => { return await safeStoreSet('vtApiKey', encryptKey(k)) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-spam-keywords', async (e, k) => { return await safeStoreSet('spamKeywords', k) ? { ok: true } : { ok: false }; });
 ipcMain.handle('set-rubrics', async (e, r) => { return await safeStoreSet('rubrics', r) ? { ok: true } : { ok: false }; });
 ipcMain.handle('set-whitelist', async (e, w) => { return await safeStoreSet('whitelist', w) ? { ok: true } : { ok: false }; });
 ipcMain.handle('set-blacklist', async (e, b) => { return await safeStoreSet('blacklist', b) ? { ok: true } : { ok: false }; });
@@ -621,124 +597,83 @@ ipcMain.handle('set-schedule', async (e, s) => { return await safeStoreSet('sche
 ipcMain.handle('save-column-widths', async (e, w) => { return await safeStoreSet('columnWidths', w) ? { ok: true } : { ok: false }; });
 ipcMain.handle('open-logs-folder', async () => { const r = await shell.openPath(LOG_DIR); return r ? { ok: false } : { ok: true }; });
 ipcMain.handle('get-forensics', async (e, id) => {
-    if (!id) return { fullHeaders: 'No ID provided.', body: 'No ID provided.' };
     if (forensicCache.has(id)) return forensicCache.get(id);
     const fPath = getForensicFilePath(id);
-    if (fs.existsSync(fPath)) {
-        try {
-            const data = await fsPromises.readFile(fPath, 'utf8');
-            const parsed = JSON.parse(data);
-            forensicCache.set(id, parsed);
-            return parsed;
-        } catch {}
-    }
-    return { fullHeaders: 'Forensic details unavailable for this historical item.', body: 'Forensic details unavailable for this historical item.' };
+    if (fs.existsSync(fPath)) { try { const data = await fsPromises.readFile(fPath, 'utf8'); const parsed = JSON.parse(data); forensicCache.set(id, parsed); return parsed; } catch {} }
+    return { fullHeaders: 'Unavailable', body: 'Unavailable' };
 });
-
 ipcMain.handle('clear-security-cache', async () => { 
-    await safeStoreUpdate(s => { 
-        s.processedIds = []; 
-        s.stats = { spam: [], safe: [], malicious: [], suspicious: [] }; 
-        s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
-    }); 
+    await safeStoreUpdate(s => { s.processedIds = []; s.stats = { spam: [], safe: [], malicious: [], suspicious: [] }; s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 }; }); 
     forensicCache.clear();
-    try {
-        const files = fs.readdirSync(FORENSICS_DIR);
-        for (const file of files) fs.unlinkSync(path.join(FORENSICS_DIR, file));
-    } catch {}
-    await logLine('SVC', 'Cache and history cleared'); 
+    try { const files = await fsPromises.readdir(FORENSICS_DIR); for (const file of files) { await fsPromises.unlink(path.join(FORENSICS_DIR, file)).catch(() => {}); } } catch {}
     return { ok: true }; 
 });
-ipcMain.handle('app-reset', async () => { await safeStoreUpdate(s => { for (const k in s) delete s[k]; }); app.relaunch(); setTimeout(() => shutdown(0), 100); return { ok: true }; });
-ipcMain.handle('backup-config', async () => { await forceReloadStore(); const c = store.store; const d = await dialog.showSaveDialog(mainWindow, { title: 'Export', defaultPath: path.join(app.getPath('downloads'), 'config.json') }); if (!d.filePath) return false; await fsPromises.writeFile(d.filePath, JSON.stringify(c, null, 2), 'utf8'); return true; });
+ipcMain.handle('app-reset', async () => { 
+    const release = await acquireFileLock(STORE_LOCK_PATH);
+    try { store.clear(); if (fs.existsSync(CONFIG_FILE_PATH)) fs.unlinkSync(CONFIG_FILE_PATH); } finally { await release(); }
+    app.relaunch(); setTimeout(() => shutdown(0), 100); return { ok: true }; 
+});
+ipcMain.handle('backup-config', async () => { await forceReloadStore(); const d = await dialog.showSaveDialog(mainWindow, { defaultPath: 'config.json' }); if (!d.filePath) return false; await fsPromises.writeFile(d.filePath, JSON.stringify(store.store, null, 2)); return true; });
 ipcMain.handle('restore-config', async () => { const d = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] }); if (!d.filePaths[0]) return false; try { const data = safeJsonParse(await fsPromises.readFile(d.filePaths[0], 'utf8')); if (data) { await safeStoreMerge(data); app.relaunch(); await shutdown(0); return true; } } catch {} return false; });
 ipcMain.handle('release-email', async (e, d) => {
-    if (d.whitelistEntry) {
-        const wl = store.get('whitelist') || { emails: [], ips: [], domains: [], combos: [] };
-        if (d.whitelistEntry.type === 'email' && !wl.emails.includes(d.whitelistEntry.value)) wl.emails.push(d.whitelistEntry.value);
-        if (d.whitelistEntry.type === 'ip' && !wl.ips.includes(d.whitelistEntry.value)) wl.ips.push(d.whitelistEntry.value);
-        if (d.whitelistEntry.type === 'domain' && !wl.domains.includes(d.whitelistEntry.value)) wl.domains.push(d.whitelistEntry.value);
-        if (d.whitelistEntry.type === 'combo' && !wl.combos.includes(d.whitelistEntry.value)) wl.combos.push(d.whitelistEntry.value);
-        await safeStoreSet('whitelist', wl);
+    if (d.whitelistEntries) {
+        await safeStoreUpdate(s => {
+            const wl = s.whitelist || { emails: [], ips: [], domains: [], combos: [] };
+            const bl = s.blacklist || { emails: [], ips: [], domains: [], combos: [] };
+            for (const entry of d.whitelistEntries) {
+                if (!entry || !entry.value) continue;
+                const type = entry.type === 'email' ? 'emails' : entry.type === 'ip' ? 'ips' : entry.type === 'domain' ? 'domains' : 'combos';
+                if (!wl[type].includes(entry.value)) wl[type].push(entry.value);
+                bl[type] = bl[type].filter(v => v !== entry.value);
+            }
+            s.whitelist = wl; s.blacklist = bl;
+        });
     }
     const ps = path.join(APP_ROOT, 'outlook-scanner.ps1');
     const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', ps, '-Mode', 'Release'], { windowsHide: true });
-    const finalToken = isServiceMode ? serviceAuthToken : (serviceSession ? serviceSession.token : '');
-    child.stdin.write(JSON.stringify({ authToken: finalToken, targetEntryId: d.entryId, originalFolder: d.originalFolder || '', unread: !!d.unread }) + '\n'); 
+    child.stdin.write(JSON.stringify({ authToken: isServiceMode ? serviceAuthToken : serviceSession.token, targetEntryIds: d.entryIds || [d.entryId], originalFolders: d.originalFolders || [d.originalFolder], unreads: d.unreads || [d.unread] }) + '\n'); 
     child.stdin.end();
     child.stdout.on('data', async data => {
         const lines = data.toString().split('\n');
         for (const line of lines) {
-            const trimmed = line.trim(); if (!trimmed) continue;
-            const p = safeJsonParse(trimmed); if (!p) continue;
+            const p = safeJsonParse(line.trim()); if (!p) continue;
             if (p.type === 'release-progress') {
-                const logMsg = `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status} - ${p.message}`;
-                logLine('RELEASE', logMsg);
-                if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.send('live-log', logMsg); if (p.status === 'Finished' || p.status === 'Error') { mainWindow.webContents.send('email-released', { ok: p.ok, entryId: p.entryId, message: p.message }); } }
-                if (p.status === 'Finished' && p.ok) {
-                    await safeStoreUpdate(s => {
-                        if (p.newEntryId && !s.processedIds.includes(p.newEntryId)) {
-                            s.processedIds.push(p.newEntryId);
-                            if (s.processedIds.length > 5000) s.processedIds = s.processedIds.slice(-5000);
-                        }
-                        for (const cat in s.stats) {
-                            const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId);
-                            if (idx !== -1) { s.stats[cat].splice(idx, 1); break; }
-                        }
-                    });
-                }
+                if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.send('live-log', `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status}`); if (p.status === 'Finished' || p.status === 'Error') { mainWindow.webContents.send('email-released', { ok: p.ok, entryId: p.entryId }); } }
+                if (p.status === 'Finished' && p.ok) { await safeStoreUpdate(s => { for (const cat in s.stats) { const idx = s.stats[cat].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[cat].splice(idx, 1); break; } } }); }
             }
         }
     });
-    child.on('close', (code) => { logLine('RELEASE', `Release process for ${d.entryId} exited with code ${code}`); });
+    child.on('close', async () => { await forceReloadStore(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); });
     return { ok: true };
 });
 ipcMain.handle('quarantine-email', async (e, d) => {
-    if (d.blacklistEntry) {
-        const bl = store.get('blacklist') || { emails: [], ips: [], domains: [], combos: [] };
-        if (d.blacklistEntry.type === 'email' && !bl.emails.includes(d.blacklistEntry.value)) bl.emails.push(d.blacklistEntry.value);
-        if (d.blacklistEntry.type === 'ip' && !bl.ips.includes(d.blacklistEntry.value)) bl.ips.push(d.blacklistEntry.value);
-        if (d.blacklistEntry.type === 'domain' && !bl.domains.includes(d.blacklistEntry.value)) bl.domains.push(d.blacklistEntry.value);
-        if (d.blacklistEntry.type === 'combo' && !bl.combos.includes(d.blacklistEntry.value)) bl.combos.push(d.blacklistEntry.value);
-        await safeStoreSet('blacklist', bl);
+    if (d.blacklistEntries) {
+        await safeStoreUpdate(s => {
+            const wl = s.whitelist || { emails: [], ips: [], domains: [], combos: [] };
+            const bl = s.blacklist || { emails: [], ips: [], domains: [], combos: [] };
+            for (const entry of d.blacklistEntries) {
+                if (!entry || !entry.value) continue;
+                const type = entry.type === 'email' ? 'emails' : entry.type === 'ip' ? 'ips' : entry.type === 'domain' ? 'domains' : 'combos';
+                if (!bl[type].includes(entry.value)) bl[type].push(entry.value);
+                wl[type] = wl[type].filter(v => v !== entry.value);
+            }
+            s.whitelist = wl; s.blacklist = bl;
+        });
     }
     const ps = path.join(APP_ROOT, 'outlook-scanner.ps1');
     const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', ps, '-Mode', 'Quarantine'], { windowsHide: true });
-    const finalToken = isServiceMode ? serviceAuthToken : (serviceSession ? serviceSession.token : '');
-    child.stdin.write(JSON.stringify({ authToken: finalToken, targetEntryId: d.entryId }) + '\n'); 
+    child.stdin.write(JSON.stringify({ authToken: isServiceMode ? serviceAuthToken : serviceSession.token, targetEntryIds: d.entryIds || [d.entryId] }) + '\n'); 
     child.stdin.end();
     child.stdout.on('data', async data => {
         const lines = data.toString().split('\n');
         for (const line of lines) {
-            const trimmed = line.trim(); if (!trimmed) continue;
-            const p = safeJsonParse(trimmed); if (!p) continue;
-            if (p.type === 'quarantine-progress') {
-                const logMsg = `[QUARANTINE] Item ${p.entryId.substring(0,8)}: ${p.status} - ${p.message}`;
-                logLine('QUARANTINE', logMsg);
-                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('live-log', logMsg);
-                if (p.status === 'Finished' && p.ok) {
-                    await safeStoreUpdate(s => {
-                        let item = null; let oldCat = '';
-                        for (const c in s.stats) {
-                            const idx = s.stats[c].findIndex(it => it.entryId === p.entryId);
-                            if (idx !== -1) { item = s.stats[c].splice(idx, 1)[0]; oldCat = c; break; }
-                        }
-                        if (item) {
-                            item.entryId = p.newEntryId || item.entryId;
-                            item.action = 'Quarantined';
-                            if (!s.stats.spam) s.stats.spam = [];
-                            s.stats.spam.push(item);
-                            if (s.stats.spam.length > 1000) s.stats.spam = s.stats.spam.slice(-1000);
-                            if (!s.totals) s.totals = { spam: 0, safe: 0, malicious: 0, suspicious: 0 };
-                            if (oldCat) s.totals[oldCat] = Math.max(0, (s.totals[oldCat] || 0) - 1);
-                            s.totals.spam = (s.totals.spam || 0) + 1;
-                            if (p.newEntryId && !s.processedIds.includes(p.newEntryId)) s.processedIds.push(p.newEntryId);
-                        }
-                    });
-                }
+            const p = safeJsonParse(line.trim()); if (!p) continue;
+            if (p.type === 'quarantine-progress' && p.status === 'Finished' && p.ok) {
+                await safeStoreUpdate(s => { for (const c in s.stats) { const idx = s.stats[c].findIndex(it => it.entryId === p.entryId); if (idx !== -1) { s.stats[c].splice(idx, 1); break; } } });
             }
         }
     });
+    child.on('close', async () => { await forceReloadStore(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); });
     return { ok: true };
 });
 ipcMain.handle('check-power-status', async () => ({ safe: true }));

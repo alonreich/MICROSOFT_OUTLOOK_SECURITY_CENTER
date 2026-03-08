@@ -17,11 +17,11 @@
     .status-btn.off { background: var(--danger); color: #fff; border-color: #d04040; }
     .main-grid { display: grid; grid-template-columns: 300px 1fr; flex: 1; overflow: hidden; }
     .sidebar { background: #0d111d; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; }
     .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
     .stat-card.active { border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.2); }
-    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 5px; }
-    .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 5px; width: 100%; }
+    .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; width: 100%; }
     .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
     .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
     .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); padding: 12px 20px; background: rgba(0,0,0,0.2); font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
@@ -39,7 +39,11 @@
     .header-area { flex: 1; background: #0d111d; border: 1px solid var(--border); padding: 15px; font-family: monospace; font-size: 0.7rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #a3be8c; border-radius: 8px; }
     .btn-secondary { background: var(--metallic); border: 1px solid var(--border); color: var(--text); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
     .btn-secondary:hover { border-color: var(--accent); }
+    .btn-secondary.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .btn-apply { background: var(--accent); color: #fff; border: none; padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 15px rgba(142, 117, 255, 0.3); }
+    .btn-step { background: var(--metallic); border: 1px solid var(--border); color: var(--text); width: 22px; height: 22px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 900; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .btn-step:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .btn-step:disabled { opacity: 0.3; cursor: not-allowed; }
     .btn-cancel-metallic { background: #2d334a; color: var(--muted); border: 1px solid var(--border); padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; }
     .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 2000; overflow: hidden; }
     .context-menu-item { padding: 10px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); transition: background 0.2s; }
@@ -258,10 +262,11 @@
 
     let stats = { malicious: [], suspicious: [], spam: [], safe: [] };
     let selectedIds = new Set();
+    let pendingActions = new Set(); // Track items being moved to prevent ghosting (Issue 5)
     let lastSelectedIndex = -1;
     let lastRenderedJson = "";
     let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
-    let currentWeights = { dmarc: 20, alignment: 15, dkim: 10, spf: 20, rdns: 10, body: 10, heuristics: 10, rbl: 25 };
+    let currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 };
     let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true };
     let tooltipTimer = null;
     let currentDetailEntryId = null;
@@ -285,7 +290,11 @@
                 <input type="checkbox" class="weight-toggle" data-key="${key}" ${isEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
                 <div style="flex: 1; font-size: 0.8rem; font-weight: bold;">${labels[key]}</div>
                 <input type="range" class="weight-slider" data-key="${key}" min="1" max="100" value="${val}" ${isEnabled ? '' : 'disabled'} style="flex: 2; cursor: pointer;">
-                <div style="width: 40px; text-align: right; font-family: monospace; font-size: 0.9rem; color: var(--accent);">${val}%</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="btn-step" onclick="stepWeight('${key}', -1)" ${isEnabled ? '' : 'disabled'}>-</button>
+                    <div style="width: 40px; text-align: center; font-family: monospace; font-size: 0.9rem; color: var(--accent);">${val}%</div>
+                    <button class="btn-step" onclick="stepWeight('${key}', 1)" ${isEnabled ? '' : 'disabled'}>+</button>
+                </div>
             </div>`;
         }).join('');
         document.querySelectorAll('.sensitivity-row').forEach(row => {
@@ -305,6 +314,25 @@
         document.querySelectorAll('.weight-slider').forEach(slider => { slider.oninput = (e) => { const key = e.target.dataset.key; const newVal = parseInt(e.target.value); rebalanceWeights(key, newVal); renderSensitivityUI(); }; });
         document.querySelectorAll('.weight-toggle').forEach(chk => { chk.onchange = (e) => { const key = e.target.dataset.key; currentToggles[key] = chk.checked; if (!chk.checked) { const val = currentWeights[key]; currentWeights[key] = 0; distributeDifference(key, val); } else { currentWeights[key] = 1; distributeDifference(key, -1); } renderSensitivityUI(); }; });
     }
+    window.stepWeight = (key, delta) => {
+        if (!currentToggles[key]) return;
+        const oldVal = currentWeights[key];
+        let newVal = oldVal + delta;
+        if (newVal < 1) newVal = 1;
+        if (newVal > 100) newVal = 100;
+        if (newVal === oldVal) return;
+        
+        // Ensure rebalancing is possible
+        const activeKeys = Object.keys(currentWeights).filter(k => k !== key && currentToggles[k]);
+        if (delta > 0) {
+            // If increasing, we must be able to decrease something else
+            const canDecrease = activeKeys.some(k => currentWeights[k] > 1);
+            if (!canDecrease) return;
+        }
+
+        rebalanceWeights(key, newVal);
+        renderSensitivityUI();
+    };
     function rebalanceWeights(changedKey, newVal) { const oldVal = currentWeights[changedKey]; const diff = newVal - oldVal; currentWeights[changedKey] = newVal; distributeDifference(changedKey, diff); }
     function distributeDifference(excludeKey, diff) {
         const activeKeys = Object.keys(currentWeights).filter(k => k !== excludeKey && currentToggles[k]); if (activeKeys.length === 0) return;
@@ -314,7 +342,20 @@
         total = 0; Object.values(currentWeights).forEach(v => total += v); if (total !== 100 && first) currentWeights[first] += (100 - total);
     }
     function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-    function updateDashboard(data) { stats = data; ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = data[c].length; }); renderList(); }
+    
+    function updateDashboard(data) { 
+        // FILTER OUT PENDING ITEMS (Issue 5)
+        const cleanStats = {};
+        for (const cat in data) {
+            cleanStats[cat] = data[cat].filter(item => !pendingActions.has(item.entryId));
+        }
+        stats = cleanStats; 
+        ['malicious','suspicious','spam','safe'].forEach(c => { 
+            const el = document.getElementById('count-'+c); 
+            if(el) el.textContent = cleanStats[c].length; 
+        }); 
+        renderList(); 
+    }
     
     function renderList() {
         const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; 
@@ -581,8 +622,37 @@
         const items = getSelectedItems();
         if (!items.length) return;
         
-        // Instant UI feedback (Issue 8)
-        items.forEach(i => {
+        const toProcess = [...items];
+        const blacklistEntries = [];
+        const whitelistEntries = [];
+
+        // CASCADE LOGIC: Find matching items in ALL categories
+        if (items.length === 1) {
+            const seed = items[0];
+            const criteriaValue = (type === 'email') ? seed.sender : (type === 'ip') ? seed.ip : (type === 'domain') ? seed.domain : `${seed.ip}|${seed.domain}`;
+            
+            ['malicious', 'suspicious', 'spam', 'safe'].forEach(cat => {
+                (stats[cat] || []).forEach(other => {
+                    let match = false;
+                    if (type === 'email' && other.sender === criteriaValue) match = true;
+                    else if (type === 'ip' && other.ip === criteriaValue) match = true;
+                    else if (type === 'domain' && other.domain === criteriaValue) match = true;
+                    else if (type === 'combo' && `${other.ip}|${other.domain}` === criteriaValue) match = true;
+                    
+                    if (match && !toProcess.find(x => x.entryId === other.entryId)) {
+                        toProcess.push(other);
+                    }
+                });
+            });
+            
+            if (toProcess.length > items.length) {
+                addLog(`CASCADE: Found ${toProcess.length - items.length} matching items in the dashboard.`);
+            }
+        }
+
+        // Instant UI feedback
+        toProcess.forEach(i => {
+            pendingActions.add(i.entryId);
             selectedIds.delete(i.entryId);
             for (const cat in stats) {
                 const idx = stats[cat].findIndex(it => it.entryId === i.entryId);
@@ -592,55 +662,30 @@
         renderList();
 
         if (activeCat === 'safe') {
-            addLog(`Marking ${items.length} items as SPAM...`);
-            for (const i of items) {
-                let blEntry = null;
-                if (type === 'email') blEntry = { type: 'email', value: i.sender };
-                else if (type === 'ip') blEntry = { type: 'ip', value: i.ip };
-                else if (type === 'domain') blEntry = { type: 'domain', value: i.domain };
-                else if (type === 'combo') blEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
-                await api.quarantineEmail({ entryId: i.entryId, blacklistEntry: blEntry });
-                await new Promise(r => setTimeout(r, 100)); // Throttle to prevent DoS
-            }
+            addLog(`Marking ${toProcess.length} items as SPAM in bulk...`);
+            const entryIds = toProcess.map(i => i.entryId);
+            const bls = toProcess.map(i => {
+                if (type === 'email') return { type: 'email', value: i.sender };
+                if (type === 'ip') return { type: 'ip', value: i.ip };
+                if (type === 'domain') return { type: 'domain', value: i.domain };
+                return { type: 'combo', value: `${i.ip}|${i.domain}` };
+            });
+            await api.quarantineEmail({ entryIds, blacklistEntries: bls });
         } else {
-            addLog(`Initiating bulk release for ${items.length} items...`);
-            for (const i of items) {
-                let wlEntry = null;
-                if (type === 'email') wlEntry = { type: 'email', value: i.sender };
-                else if (type === 'ip') wlEntry = { type: 'ip', value: i.ip };
-                else if (type === 'domain') wlEntry = { type: 'domain', value: i.domain };
-                else if (type === 'combo') wlEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
-                await api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder, unread: i.unread });
-                await new Promise(r => setTimeout(r, 100)); // Throttle to prevent DoS
-                if (wlEntry) {
-                    const toCascade = [];
-                    ['malicious', 'suspicious', 'spam'].forEach(cat => {
-                        (stats[cat] || []).forEach(other => {
-                            if (other.entryId === i.entryId) return;
-                            let match = false;
-                            if (type === 'email' && other.sender === wlEntry.value) match = true;
-                            else if (type === 'ip' && other.ip === wlEntry.value) match = true;
-                            else if (type === 'domain' && other.domain === wlEntry.value) match = true;
-                            else if (type === 'combo' && `${other.ip}|${other.domain}` === wlEntry.value) match = true;
-                            if (match) toCascade.push({ ...other, cat });
-                        });
-                    });
-                    if (toCascade.length > 0) {
-                        addLog(`CASCADE: Automatically releasing ${toCascade.length} matching items...`);
-                        for (const c of toCascade) {
-                            // Instant UI feedback for cascade
-                            for (const cat in stats) {
-                                const idx = stats[cat].findIndex(it => it.entryId === c.entryId);
-                                if (idx !== -1) { stats[cat].splice(idx, 1); break; }
-                            }
-                            await api.releaseEmail({ entryId: c.entryId, whitelistEntry: null, originalFolder: c.originalFolder, unread: c.unread });
-                            await new Promise(r => setTimeout(r, 100)); // Throttle cascade
-                        }
-                        renderList();
-                    }
-                }
-            }
+            addLog(`Initiating bulk release for ${toProcess.length} items...`);
+            const entryIds = toProcess.map(i => i.entryId);
+            const originalFolders = toProcess.map(i => i.originalFolder);
+            const unreads = toProcess.map(i => i.unread);
+            const wls = toProcess.map(i => {
+                if (type === 'email') return { type: 'email', value: i.sender };
+                if (type === 'ip') return { type: 'ip', value: i.ip };
+                if (type === 'domain') return { type: 'domain', value: i.domain };
+                return { type: 'combo', value: `${i.ip}|${i.domain}` };
+            });
+            await api.releaseEmail({ entryIds, whitelistEntries: wls, originalFolders, unreads });
         }
+        
+        setTimeout(() => { toProcess.forEach(i => pendingActions.delete(i.entryId)); }, 30000);
     }
     document.getElementById('rel-email').onclick = () => handleContextMenuAction('email');
     document.getElementById('rel-ip').onclick = () => handleContextMenuAction('ip');
