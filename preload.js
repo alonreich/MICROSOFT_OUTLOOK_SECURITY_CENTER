@@ -1,26 +1,36 @@
 const { contextBridge, ipcRenderer } = require('electron');
+
+const invoke = (channel, payload) => ipcRenderer.invoke(channel, payload);
+
 contextBridge.exposeInMainWorld('securityApi', {
-    getStats: () => ipcRenderer.invoke('get-stats'),
-    getConfig: () => ipcRenderer.invoke('get-config'),
-    setEnabled: (val) => ipcRenderer.send('set-enabled', val),
-    setHistoryEnabled: (val) => ipcRenderer.send('set-history-enabled', val),
-    setVTKey: (key) => ipcRenderer.send('set-vt-key', key),
-    setSpamKeywords: (keywords) => ipcRenderer.send('set-spam-keywords', keywords),
-    setRubrics: (rubrics) => ipcRenderer.send('set-rubrics', rubrics),
-    setWhitelist: (whitelist) => ipcRenderer.send('set-whitelist', whitelist),
-    setSchedule: (val) => ipcRenderer.send('set-schedule', val),
-    saveColumnWidths: (widths) => ipcRenderer.send('save-column-widths', widths),
-    openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
-    resetApp: () => ipcRenderer.send('app-reset'),
-    releaseEmail: (data) => ipcRenderer.send('release-email', data),
-    checkPowerStatus: () => ipcRenderer.invoke('check-power-status'),
-    overridePowerPlan: () => ipcRenderer.send('override-power-plan'),
-    backupConfig: () => ipcRenderer.invoke('backup-config'),
-    restoreConfig: () => ipcRenderer.invoke('restore-config'),
-    onOutlookScanUpdate: (callback) => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
-    onScanFinished: (callback) => ipcRenderer.on('scan-finished', (event, mode) => callback(mode)),
-    onStatusSync: (callback) => ipcRenderer.on('status-sync', (event, val) => callback(val)),
-    onEmailReleased: (callback) => ipcRenderer.on('email-released-success', (event, id) => callback(id)),
-    onEmailReleasedError: (callback) => ipcRenderer.on('email-released-error', (event, data) => callback(data)),
-    onStatsUpdate: (callback) => ipcRenderer.on('stats-update', (event, data) => callback(data))
+    getStats: () => invoke('get-stats'),
+    getConfig: () => invoke('get-config'),
+    setEnabled: value => invoke('set-enabled', value),
+    setHistoryEnabled: value => invoke('set-history-enabled', value),
+    setVTKey: value => invoke('set-vt-key', value),
+    setSpamKeywords: value => invoke('set-spam-keywords', value),
+    setRubrics: value => invoke('set-rubrics', value),
+    setWhitelist: value => invoke('set-whitelist', value),
+    setSchedule: value => invoke('set-schedule', value),
+    saveColumnWidths: value => invoke('save-column-widths', value),
+    openLogsFolder: () => invoke('open-logs-folder'),
+    resetApp: () => invoke('app-reset'),
+    clearSecurityCache: () => invoke('clear-security-cache'),
+    releaseEmail: value => invoke('release-email', value),
+    checkPowerStatus: () => invoke('check-power-status'),
+    overridePowerPlan: () => invoke('override-power-plan'),
+    backupConfig: () => invoke('backup-config'),
+    restoreConfig: () => invoke('restore-config'),
+    cleanupListeners: () => {
+        ipcRenderer.removeAllListeners('outlook-scan-update');
+        ipcRenderer.removeAllListeners('status-sync');
+        ipcRenderer.removeAllListeners('stats-update');
+        ipcRenderer.removeAllListeners('live-log');
+        ipcRenderer.removeAllListeners('email-released');
+    },
+    onOutlookScanUpdate: callback => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
+    onStatusSync: callback => ipcRenderer.on('status-sync', (event, value) => callback(value)),
+    onStatsUpdate: callback => ipcRenderer.on('stats-update', (event, data) => callback(data)),
+    onLiveLog: callback => ipcRenderer.on('live-log', (event, message) => callback(message)),
+    onEmailReleased: callback => ipcRenderer.on('email-released', (event, data) => callback(data))
 });

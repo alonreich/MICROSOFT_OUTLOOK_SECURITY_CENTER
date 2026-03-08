@@ -58,9 +58,11 @@
     .btn-apply:hover { background: linear-gradient(180deg, #246351 0%, #123d2f 100%); transform: translateY(-1px); }
     .btn-cancel-metallic { background: linear-gradient(180deg, #4d1b1b 0%, #2b0d0d 100%); color: #ff8a8a; border: 1px solid #7a2d2d; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); width: 160px !important; min-width: 160px !important; max-width: 160px !important; height: 45px !important; font-size: 0.7rem !important; font-weight: 800 !important; cursor: pointer; border-radius: 8px; display: flex; justify-content: center; align-items: center; transition: all 0.2s; text-transform: uppercase; }
     .btn-cancel-metallic:hover { background: linear-gradient(180deg, #632424 0%, #3d1212 100%); transform: translateY(-1px); }
+    .custom-tooltip { display: none; position: fixed; background: #1c1c24; color: #fff; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; z-index: 2000; width: 350px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); pointer-events: none; line-height: 1.5; }
   </style>
 </head>
 <body>
+  <div id="tooltip" class="custom-tooltip"></div>
   <div class="header">
     <div class="title-area">
       <button id="reset-btn" class="btn-destructive" title="Hard Wipe Everything" style="margin-right: 15px;">RESET APP</button>
@@ -72,8 +74,9 @@
         <button id="history-toggle" class="btn-secondary">HISTORY SCAN</button>
         <button id="schedule-btn" class="btn-secondary">SCHEDULE</button>
         <button id="show-logs-btn" class="btn-secondary">LOGS</button>
+        <button id="sensitivity-btn" class="btn-secondary" style="background: linear-gradient(180deg, #4d3e1b 0%, #2b220d 100%); border-color: #7a632d; color: #ffb454;">SPAM ALGORITHM SENSITIVITY</button>
         <button id="settings-btn" class="btn-secondary">
-            <svg style="width:12px; height:12px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.5 15.47,5.19 14.86,4.97L14.47,2.33C14.44,2.1 14.22,1.92 14,1.92H10C9.78,1.92 9.56,2.1 9.53,2.33L9.14,4.97C8.53,5.19 7.96,5.5 7.44,5.9L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,18.1C7.96,18.5 8.53,18.81 9.14,19.03L9.53,21.67C9.56,21.9 9.78,22.08 10,22.08H14C14.22,22.08 14.44,21.9 14.47,21.67L14.86,19.03C15.47,18.81 16.04,18.5 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+            <svg style="width:12px; height:12px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.5 15.47,5.19 14.86,4.97L14.47,2.33C14.44,2.1 14.22,1.92 14,1.92H10C9.78,1.92 9.56,2.1 9.53,2.33L9.14,4.97C8.53,5.19 7.96,5.5 7.44,5.9L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,12.33 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,18.1C7.96,18.5 8.53,18.81 9.14,19.03L9.53,21.67C9.56,21.9 9.78,22.08 10,22.08H14C14.22,22.08 14.44,21.9 14.47,21.67L14.86,19.03C15.47,18.81 16.04,18.5 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
             <span style="margin: 0 4px;">SETTINGS</span>
         </button>
     </div>
@@ -103,12 +106,29 @@
     <div class="modal-content">
         <div class="modal-header">
             <span>Email Forensic Details</span>
-            <button id="copy-headers-btn" class="btn-secondary" style="font-size: 0.6rem;">Copy Full Headers</button>
+            <span id="close-details-x" style="cursor: pointer; color: #ff6161; font-weight: bold; font-size: 1.5rem; line-height: 1;">&times;</span>
         </div>
         <div class="detail-grid" id="detail-view"></div>
-        <div class="detail-label" style="margin-top:12px; margin-bottom:4px; font-size: 0.75rem;">Full RFC 822 Headers:</div>
+        <div class="detail-label" style="margin-top:12px; margin-bottom:4px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
+            Full RFC 822 Headers:
+            <span id="copy-headers-icon" title="Click here to copy the entire header of the email" style="cursor: pointer; display: flex; align-items: center;">
+                <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
+            </span>
+        </div>
         <div class="header-area" id="header-text"></div>
-        <button id="close-details-btn" style="margin-top:15px; padding: 10px;">Close Details</button>
+        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 45px;">
+            <button id="read-email-btn" class="btn-secondary" style="background:var(--accent); padding: 10px 25px; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px;">✉️ Read Email Content ✉️</button>
+            <button id="close-details-btn" class="btn-secondary" style="background: #800000; border-color: #a00000; position: absolute; right: 0; padding: 10px 20px; font-weight: 800;">Close Window</button>
+        </div>
+    </div>
+  </div>
+  <div id="body-modal" class="modal">
+    <div class="modal-content" style="width: 80%; max-width: 1000px; height: 80vh;">
+        <div class="modal-header">
+            <span id="body-subject">Email Content</span>
+            <button id="close-body-btn" class="btn-secondary">Close</button>
+        </div>
+        <div id="body-text" class="header-area" style="flex: 1; max-height: none; font-family: 'Segoe UI', sans-serif; font-size: 0.9rem; color: #fff; background: rgba(0,0,0,0.3);"></div>
     </div>
   </div>
   <div id="settings-modal" class="modal">
@@ -123,7 +143,7 @@
                         <input type="password" id="vt-api-key" placeholder="Enter VT Key">
                     </div>
                     <div style="text-align: center;">
-                        <label title="Controls the threshold for Spam/Suspicious scoring (DKIM, SPF, Keywords).&#10;Does NOT affect Malware/Virus API checks.&#10;Lower = Catch more potential Spam | Higher = Only catch obvious Spam.&#10;Default: 5" style="cursor: help; text-decoration: underline dotted;">Heuristic Threshold</label>
+                        <label title="Controls the threshold for Spam/Suspicious scoring. Default: 5" style="cursor: help; text-decoration: underline dotted;">Heuristic Threshold</label>
                         <input type="number" id="spam-threshold" min="1" max="20" step="1">
                     </div>
                 </div>
@@ -137,21 +157,11 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div style="text-align: center;">
                         <label>Authorized Emails</label>
-                        <textarea id="wl-emails" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="ceo@company.com&#10;support@it.org"></textarea>
+                        <textarea id="wl-emails" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="ceo@company.com"></textarea>
                     </div>
                     <div style="text-align: center;">
                         <label>Authorized IP Addresses</label>
-                        <textarea id="wl-ips" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="192.168.1.100&#10;10.0.0.50"></textarea>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top:12px;">
-                    <div style="text-align: center;">
-                        <label>Authorized Domains</label>
-                        <textarea id="wl-domains" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="microsoft.com&#10;google.com"></textarea>
-                    </div>
-                    <div style="text-align: center;">
-                        <label>Authorized Combos (Domain:IP)</label>
-                        <textarea id="wl-combos" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="bank.com:1.2.3.4&#10;vpn.net:5.6.7.8"></textarea>
+                        <textarea id="wl-ips" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="192.168.1.100"></textarea>
                     </div>
                 </div>
             </div>
@@ -169,7 +179,17 @@
         </div>
     </div>
   </div>
-
+  <div id="sensitivity-modal" class="modal">
+    <div class="modal-content" style="width: 600px;">
+        <div class="modal-header" style="justify-content: center;">SPAM ALGORITHM SENSITIVITY</div>
+        <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 15px; padding: 10px;"></div>
+        <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px;">
+            <button id="save-sensitivity" class="btn-apply">APPLY WEIGHTS</button>
+            <button id="reset-sensitivity-defaults" class="btn-secondary" style="font-size: 0.6rem; padding: 10px; border-color: var(--muted); color: var(--muted);">RESET TO DEFAULTS</button>
+            <button id="close-sensitivity" class="btn-cancel-metallic">CANCEL</button>
+        </div>
+    </div>
+  </div>
   <div id="schedule-modal" class="modal">
     <div class="modal-content" style="width: 400px;">
         <div class="modal-header">Audit Scheduler</div>
@@ -192,146 +212,292 @@
         </div>
     </div>
   </div>
-
   <div id="reset-modal" class="modal">
     <div class="modal-content" style="width: 400px; border-color: var(--danger);">
         <div class="modal-header" style="color: var(--danger);">HARD FACTORY RESET</div>
-        <p style="font-size: 0.8rem; text-align: center; color: var(--muted);">This will wipe all statistics, processed IDs, and settings. A backup will be created in your Downloads folder first.</p>
+        <p style="font-size: 0.8rem; text-align: center; color: var(--muted);">This will wipe all statistics, processed IDs, and settings.</p>
         <div style="display:flex; gap:10px; margin-top:10px;">
             <button id="confirm-reset" class="btn-cancel-metallic" style="flex:1; background:var(--danger); color:white;">RESET EVERYTHING</button>
             <button id="cancel-reset" class="btn-secondary" style="flex:1;">CANCEL</button>
         </div>
     </div>
   </div>
-
   <div id="ctx-menu" class="context-menu">
-    <div class="context-menu-item" id="rel-email">Release & Whitelist Email</div>
-    <div class="context-menu-item" id="rel-ip">Release & Whitelist IP</div>
-    <div class="context-menu-item" id="rel-domain">Release & Whitelist Domain</div>
-    <div class="context-menu-item" id="rel-combo">Release & Whitelist Domain:IP</div>
+    <div class="context-menu-item" id="rel-email">Release & Whitelist: Email Address Only</div>
+    <div class="context-menu-item" id="rel-ip">Release & Whitelist: IP Address Only</div>
+    <div class="context-menu-item" id="rel-domain">Release & Whitelist: Domain Only</div>
+    <div class="context-menu-item" id="rel-combo">Release & Whitelist: IP Address and Domain Combination</div>
   </div>
   <script>
     const api = window.securityApi;
     const list = document.getElementById('threat-list');
     const detModal = document.getElementById('details-modal');
     const logContainer = document.getElementById('log-container');
+    const tooltipEl = document.getElementById('tooltip');
     let stats = { malicious: [], suspicious: [], spam: [], safe: [] };
-    let selected = null;
+    let selectedIds = new Set();
+    let lastSelectedIndex = -1;
+    let lastRenderedJson = "";
     let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
-    function addLog(text) { 
-        const entry = document.createElement('div'); 
-        entry.style.padding='2px 0'; 
-        const now = new Date();
-        const timestamp = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
-        entry.textContent=`[${timestamp}] ${text}`; 
-        logContainer.prepend(entry); 
+    let currentWeights = { dmarc: 30, alignment: 20, dkim: 10, spf: 10, rdns: 10, body: 10, heuristics: 10 };
+    let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true };
+    let tooltipTimer = null;
+
+    function renderSensitivityUI() {
+        const container = document.getElementById('sensitivity-container');
+        const labels = { dmarc: 'DMARC Compliance', alignment: 'Sender Alignment', dkim: 'DKIM Integrity', spf: 'SPF Authorization', rdns: 'Reverse DNS (PTR)', body: 'Body/Payload Entropy', heuristics: 'Heuristic Hooks' };
+        const tips = {
+            dmarc: "DMARC (THE OFFICIAL SEAL): This checks if the email sender follows strict security rules. It's like checking if a letter has an official company seal. TURN THIS OFF IF: You stop getting emails from small offices or people using older systems that haven't set up these modern rules yet.",
+            alignment: "ALIGNMENT (NAME MATCH): This checks if the name on the envelope matches the name on the letter inside. It stops hackers from pretending to be your boss. TURN THIS OFF IF: You use email newsletters or group chats where one person sends a message through a different big system.",
+            dkim: "DKIM (THE DIGITAL STAMP): This looks for a secret digital stamp that proves the email wasn't changed by a hacker after it was sent. TURN THIS OFF IF: You work with very old companies whose computers don't know how to add these stamps yet.",
+            spf: "SPF (THE APPROVED TRUCK): This checks if the email was sent from a computer that is officially allowed to send it. It's like making sure a delivery driver is using the company truck. TURN THIS OFF IF: You use a service that forwards your emails, as this can make them look like they are coming from the wrong computer.",
+            rdns: "REVERSE DNS (THE ID CARD): This checks if the sender's computer has a proper 'internet ID card.' Real businesses always have one. TURN THIS OFF IF: You talk to people using home computers or tiny private servers that don't have professional internet IDs.",
+            body: "BODY SCAN (THE CODE DETECTOR): This scans for hidden code or sneaky tricks that hackers use to hide bad links inside normal text. TURN THIS OFF IF: Your job involves receiving actual computer code, technical data, or lots of math formulas, which can look like hacker tricks.",
+            heuristics: "WORD SCAN (THE SCAM FINDER): This looks for common scam words like 'Free Money,' 'Win a Prize,' or 'Urgent Login.' TURN THIS OFF IF: Your actual job is in banking, contests, or security where you expect to see these kinds of urgent words every day."
+        };
+        container.innerHTML = Object.keys(currentWeights).map(key => {
+            const val = currentWeights[key]; const isEnabled = currentToggles[key];
+            return `<div class="sensitivity-row" data-tip="${escapeHTML(tips[key])}" style="display: flex; align-items: center; gap: 15px; opacity: ${isEnabled ? 1 : 0.4}; cursor: help;">
+                <input type="checkbox" class="weight-toggle" data-key="${key}" ${isEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                <div style="flex: 1; font-size: 0.8rem; font-weight: bold;">${labels[key]}</div>
+                <input type="range" class="weight-slider" data-key="${key}" min="1" max="100" value="${val}" ${isEnabled ? '' : 'disabled'} style="flex: 2; cursor: pointer;">
+                <div style="width: 40px; text-align: right; font-family: monospace; font-size: 0.9rem; color: var(--accent);">${val}%</div>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.sensitivity-row').forEach(row => {
+            row.onmouseenter = (e) => {
+                const text = row.dataset.tip;
+                clearTimeout(tooltipTimer);
+                tooltipTimer = setTimeout(() => {
+                    tooltipEl.textContent = text;
+                    tooltipEl.style.display = 'block';
+                    const rect = row.getBoundingClientRect();
+                    tooltipEl.style.left = (rect.left - 370) + 'px';
+                    tooltipEl.style.top = rect.top + 'px';
+                }, 1000);
+            };
+            row.onmouseleave = () => { clearTimeout(tooltipTimer); tooltipEl.style.display = 'none'; };
+        });
+        document.querySelectorAll('.weight-slider').forEach(slider => { slider.oninput = (e) => { const key = e.target.dataset.key; const newVal = parseInt(e.target.value); rebalanceWeights(key, newVal); renderSensitivityUI(); }; });
+        document.querySelectorAll('.weight-toggle').forEach(chk => { chk.onchange = (e) => { const key = e.target.dataset.key; currentToggles[key] = chk.checked; if (!chk.checked) { const val = currentWeights[key]; currentWeights[key] = 0; distributeDifference(key, val); } else { currentWeights[key] = 1; distributeDifference(key, -1); } renderSensitivityUI(); }; });
     }
+    function rebalanceWeights(changedKey, newVal) { const oldVal = currentWeights[changedKey]; const diff = newVal - oldVal; currentWeights[changedKey] = newVal; distributeDifference(changedKey, diff); }
+    function distributeDifference(excludeKey, diff) {
+        const activeKeys = Object.keys(currentWeights).filter(k => k !== excludeKey && currentToggles[k]); if (activeKeys.length === 0) return;
+        let rem = diff; while (Math.abs(rem) > 0.01) { const share = rem / activeKeys.length; let applied = 0; activeKeys.forEach(k => { const cur = currentWeights[k]; let adj = share; if (cur - adj < 1) adj = cur - 1; if (cur - adj > 100) adj = cur - 100; currentWeights[k] = parseFloat((cur - adj).toFixed(2)); applied += adj; }); rem -= applied; if (Math.abs(applied) < 0.001) break; }
+        let total = 0; Object.values(currentWeights).forEach(v => total += v); const first = activeKeys[0]; if (first) currentWeights[first] = parseFloat((currentWeights[first] + (100 - total)).toFixed(2));
+        Object.keys(currentWeights).forEach(k => { currentWeights[k] = Math.max(currentToggles[k] ? 1 : 0, Math.round(currentWeights[k])); });
+        total = 0; Object.values(currentWeights).forEach(v => total += v); if (total !== 100 && first) currentWeights[first] += (100 - total);
+    }
+    function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
     function updateDashboard(data) { stats = data; ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = data[c].length; }); renderList(); }
+    
     function renderList() {
-        const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
-        const items = stats[cat] || [];
-        list.innerHTML = items.slice(-100).reverse().map((i, idx) => {
+        const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; 
+        const items = (stats[cat] || []).slice(-100).reverse();
+        const currentDataJson = JSON.stringify(items);
+        
+        if (currentDataJson === lastRenderedJson) {
+            document.querySelectorAll('.list-item').forEach(el => el.classList.toggle('selected', selectedIds.has(el.dataset.id)));
+            return;
+        }
+        
+        lastRenderedJson = currentDataJson;
+        list.innerHTML = items.map((i, idx) => {
             const [d, t] = i.date.split(' ');
             const vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff';
-            return `<div class="list-item" data-idx="${idx}"><div dir="auto" title="${i.subject}">${i.subject}</div><div>${d}</div><div>${t}</div><div title="${i.ip || 'N/A'}">${i.ip || 'N/A'}</div><div style="color:${vColor}">${cat.toUpperCase()}</div><div title="${i.action||'None'}">${i.action||'None'}</div><div title="${i.tier||''}">${i.tier||''}</div></div>`;
+            const isSelected = selectedIds.has(i.entryId);
+            return `<div class="list-item ${isSelected ? 'selected' : ''}" data-id="${i.entryId}" data-index="${idx}">
+                <div>${escapeHTML(i.subject)}</div>
+                <div>${escapeHTML(d)}</div>
+                <div>${escapeHTML(t)}</div>
+                <div>${escapeHTML(i.ip || 'N/A')}</div>
+                <div style="color:${vColor}">${cat.toUpperCase()}</div>
+                <div>${escapeHTML(i.action || 'None')}</div>
+                <div>${escapeHTML(i.tier || '')}</div>
+            </div>`;
         }).join('');
+
         document.querySelectorAll('.list-item').forEach(el => {
-            el.onclick = () => { document.querySelectorAll('.list-item').forEach(i => i.classList.remove('selected')); el.classList.add('selected'); selected = items.slice(-100).reverse()[el.dataset.idx]; };
+            const itemId = el.dataset.id;
+            const itemIdx = parseInt(el.dataset.index);
+            const itemData = items[itemIdx];
+
+            el.onclick = (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    if (selectedIds.has(itemId)) selectedIds.delete(itemId);
+                    else selectedIds.add(itemId);
+                } else if (e.shiftKey && lastSelectedIndex !== -1) {
+                    const start = Math.min(lastSelectedIndex, itemIdx);
+                    const end = Math.max(lastSelectedIndex, itemIdx);
+                    selectedIds.clear();
+                    for (let i = start; i <= end; i++) selectedIds.add(items[i].entryId);
+                } else {
+                    selectedIds.clear();
+                    selectedIds.add(itemId);
+                }
+                lastSelectedIndex = itemIdx;
+                document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
+            };
+
             el.ondblclick = () => {
-                const i = selected; const [d, t] = i.date.split(' ');
-                document.getElementById('detail-view').innerHTML = `<div class="detail-label">Subject:</div><div dir="auto">${i.subject}</div><div class="detail-label">Spam Score:</div><div style="font-weight:bold; color:var(--accent)">${i.score || 0}</div><div class="detail-label">Received:</div><div>${d} at ${t}</div><div class="detail-label">Sender:</div><div>${i.sender || 'Unknown'}</div><div class="detail-label">Verdict:</div><div style="text-transform:uppercase">${cat}</div><div class="detail-label">Action:</div><div>${i.action || 'None'}</div><div class="detail-label">Forensics:</div><div>${i.tier || 'None'}</div><div class="detail-label">Original:</div><div>${i.originalFolder || 'Unknown'}</div><div class="detail-label">IP Address:</div><div>${i.ip || 'N/A'}</div>`;
+                const i = itemData;
+                if (!i) return;
+                const [d, t] = i.date.split(' ');
+                
+                const engines = (i.tier || 'None').split(',').map(s => s.trim()).filter(Boolean);
+                const engineHtml = engines.length ? engines.map(eng => `<span style="background: rgba(142, 117, 255, 0.2); color: var(--accent); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; margin-right: 5px; display: inline-block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 0 8px rgba(142, 117, 255, 0.3);">[ ${eng} ]</span>`).join('') : '<span style="color:var(--muted)">None Detected</span>';
+
+                document.getElementById('detail-view').innerHTML = `
+                    <div class="detail-label">Email Subject:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 800; color: #fff;">${escapeHTML(i.subject)}</span>
+                        <span id="copy-subject-precision" title="Copy exact subject with quotes" style="cursor: pointer; display: flex; align-items: center;">
+                            <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
+                        </span>
+                    </div>
+                    <div class="detail-label">Spam Score:</div><div style="color:var(--accent); font-weight: 800;">${i.score || 0}</div>
+                    <div class="detail-label">Received:</div><div>${escapeHTML(d)} at ${escapeHTML(t)}</div>
+                    <div class="detail-label">Sender:</div><div style="color: var(--ok); font-family: monospace;">${escapeHTML(i.sender || 'Unknown')}</div>
+                    <div class="detail-label">Verdict:</div><div style="font-weight: 800; text-transform: uppercase;">${cat}</div>
+                    <div class="detail-label">Action:</div><div>${escapeHTML(i.action || 'None')}</div>
+                    <div class="detail-label">Detected Engines:</div><div style="line-height: 1.8;">${engineHtml}</div>
+                    <div class="detail-label">Original:</div><div style="font-size: 0.7rem; color: var(--muted);">${escapeHTML(i.originalFolder || 'Unknown')}</div>
+                    <div class="detail-label">IP Address:</div><div style="color: var(--warn); font-family: monospace;">${escapeHTML(i.ip || 'N/A')}</div>`;
+                
+                document.getElementById('copy-subject-precision').onclick = (e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(`"${i.subject}"`);
+                    addLog(`Precision Copy: Subject captured with quotes.`);
+                };
+
                 document.getElementById('header-text').textContent = i.fullHeaders || "No header information available.";
                 detModal.style.display = 'flex';
             };
-            el.oncontextmenu = (e) => { e.preventDefault(); document.querySelectorAll('.list-item').forEach(i => i.classList.remove('selected')); el.classList.add('selected'); selected = items.slice(-100).reverse()[el.dataset.idx]; if (cat !== 'safe') { document.getElementById('ctx-menu').style.display = 'block'; document.getElementById('ctx-menu').style.left = e.pageX+'px'; document.getElementById('ctx-menu').style.top = e.pageY+'px'; } };
+
+            el.oncontextmenu = (e) => {
+                e.preventDefault();
+                if (!selectedIds.has(itemId)) {
+                    selectedIds.clear();
+                    selectedIds.add(itemId);
+                    lastSelectedIndex = itemIdx;
+                    document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
+                }
+                if (cat !== 'safe') {
+                    const menu = document.getElementById('ctx-menu');
+                    menu.style.display = 'block';
+                    menu.style.left = e.pageX + 'px';
+                    menu.style.top = e.pageY + 'px';
+                }
+            };
         });
     }
-    document.getElementById('copy-headers-btn').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); };
+
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'a') {
+            e.preventDefault();
+            const cat = document.querySelector('.stat-card.active')?.id.replace('card-', '') || 'malicious';
+            const items = (stats[cat] || []).slice(-100);
+            selectedIds.clear();
+            items.forEach(i => selectedIds.add(i.entryId));
+            document.querySelectorAll('.list-item').forEach(item => item.classList.add('selected'));
+        }
+    });
+
+    function getSelectedItems() {
+        const results = [];
+        for (const cat in stats) {
+            stats[cat].forEach(i => {
+                if (selectedIds.has(i.entryId)) results.push(i);
+            });
+        }
+        return results;
+    }
+
+    function addLog(msg) { const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
+    document.getElementById('copy-headers-icon').onclick = () => { navigator.clipboard.writeText(document.getElementById('header-text').textContent); addLog("Headers copied to clipboard."); };
+    document.getElementById('read-email-btn').onclick = () => { 
+        const items = getSelectedItems();
+        if (!items.length) return;
+        const i = items[0];
+        const bodyText = document.getElementById('body-text'); 
+        const bodyModal = document.getElementById('body-modal'); 
+        document.getElementById('body-subject').textContent = i.subject + (items.length > 1 ? ` (+ ${items.length-1} more)` : '');
+        bodyText.textContent = i.body || "No email content available."; 
+        bodyText.style.direction = /[\u0590-\u05FF]/.test(i.body || "") ? 'rtl' : 'ltr'; 
+        bodyText.style.textAlign = /[\u0590-\u05FF]/.test(i.body || "") ? 'right' : 'left'; 
+        bodyModal.style.display = 'flex'; 
+    };
+    document.getElementById('close-body-btn').onclick = () => document.getElementById('body-modal').style.display = 'none';
+    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if (cfg.rubrics?.weights) currentWeights = { ...cfg.rubrics.weights }; if (cfg.rubrics?.toggles) currentToggles = { ...cfg.rubrics.toggles }; renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
+    document.getElementById('reset-sensitivity-defaults').onclick = () => { 
+        currentWeights = { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 }; 
+        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true }; 
+        renderSensitivityUI(); 
+        addLog("Sensitivity reset to new system defaults."); 
+    };
+    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
+    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles }); document.getElementById('sensitivity-modal').style.display = 'none'; addLog("Sensitivity updated."); };
     document.getElementById('scanner-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.enabled; api.setEnabled(next); updateToggleUi(next); };
     document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); const next = !cfg.historyScanEnabled; api.setHistoryEnabled(next); document.getElementById('history-toggle').classList.toggle('active', next); };
-    document.getElementById('schedule-btn').onclick = async () => {
-        const cfg = await api.getConfig();
-        const pwr = await api.checkPowerStatus();
-        document.getElementById('power-warning').style.display = pwr.safe ? 'none' : 'block';
-        document.getElementById('sched-enabled').checked = cfg.schedule?.enabled || false;
-        document.getElementById('sched-datetime').value = cfg.schedule?.datetime || "";
-        document.getElementById('schedule-modal').style.display = 'flex';
-    };
-    document.getElementById('fix-power-btn').onclick = () => { api.overridePowerPlan(); document.getElementById('power-warning').style.display = 'none'; addLog("Power plan overridden: Stay awake enabled."); };
-    document.getElementById('save-schedule').onclick = () => {
-        const enabled = document.getElementById('sched-enabled').checked;
-        const datetime = document.getElementById('sched-datetime').value;
-        if (enabled && !datetime) { alert("Please select a date and time."); return; }
-        api.setSchedule({ enabled, datetime });
-        document.getElementById('schedule-modal').style.display = 'none';
-        addLog(`Audit scheduled: ${enabled ? 'One-time run at ' + datetime : 'Disabled'}`);
-    };
+    document.getElementById('schedule-btn').onclick = async () => { const cfg = await api.getConfig(); const pwr = await api.checkPowerStatus(); document.getElementById('power-warning').style.display = pwr.safe ? 'none' : 'block'; document.getElementById('sched-enabled').checked = cfg.schedule?.enabled || false; document.getElementById('sched-datetime').value = cfg.schedule?.datetime || ""; document.getElementById('schedule-modal').style.display = 'flex'; };
+    document.getElementById('fix-power-btn').onclick = () => { api.overridePowerPlan(); document.getElementById('power-warning').style.display = 'none'; addLog("Power plan adjusted."); };
+    document.getElementById('save-schedule').onclick = () => { const enabled = document.getElementById('sched-enabled').checked; const datetime = document.getElementById('sched-datetime').value; if (enabled && !datetime) return; api.setSchedule({ enabled, datetime }); document.getElementById('schedule-modal').style.display = 'none'; addLog("Schedule updated."); };
     document.getElementById('close-schedule').onclick = () => document.getElementById('schedule-modal').style.display = 'none';
     document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
     document.getElementById('close-details-btn').onclick = () => detModal.style.display = 'none';
-    document.getElementById('settings-btn').onclick = async () => {
-        const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey;
-        document.getElementById('spam-keywords').value = cfg.spamKeywords.join('\n');
-        document.getElementById('spam-threshold').value = cfg.rubrics?.threshold || 5;
-        document.getElementById('wl-emails').value = cfg.whitelist.emails.join('\n');
-        document.getElementById('wl-ips').value = cfg.whitelist.ips.join('\n');
-        document.getElementById('wl-domains').value = cfg.whitelist.domains.join('\n');
-        document.getElementById('wl-combos').value = cfg.whitelist.combos.map(c => `${c.domain}:${c.ip}`).join('\n');
-        document.getElementById('settings-modal').style.display = 'flex';
-    };
+    document.getElementById('close-details-x').onclick = () => detModal.style.display = 'none';
+    document.getElementById('settings-btn').onclick = async () => { const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey; document.getElementById('spam-keywords').value = cfg.spamKeywords.join('\n'); document.getElementById('spam-threshold').value = cfg.rubrics?.threshold || 5; document.getElementById('settings-modal').style.display = 'flex'; };
     document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display='none';
-    document.getElementById('save-settings').onclick = async () => {
-        const cfg = await api.getConfig();
-        const wl = {
-            emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            domains: document.getElementById('wl-domains').value.split('\n').map(v=>v.trim()).filter(v=>v),
-            combos: document.getElementById('wl-combos').value.split('\n').map(v => {
-                const parts = v.trim().split(':');
-                return parts.length === 2 ? { domain: parts[0], ip: parts[1] } : null;
-            }).filter(v => v)
-        };
-        api.setVTKey(document.getElementById('vt-api-key').value); 
-        api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k));
-        api.setRubrics({ ...cfg.rubrics, threshold: parseInt(document.getElementById('spam-threshold').value) });
-        api.setWhitelist(wl);
-        document.getElementById('settings-modal').style.display='none'; addLog("Settings & Whitelists updated.");
-    };
-    document.getElementById('backup-btn').onclick = async () => { if (await api.backupConfig()) addLog("Backup completed successfully."); };
-    document.getElementById('restore-btn').onclick = async () => { if (await api.restoreConfig()) addLog("Configuration restored. App restarting..."); };
+    document.getElementById('save-settings').onclick = async () => { const cfg = await api.getConfig(); const wl = { emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v), ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v), domains: [], combos: [] }; api.setVTKey(document.getElementById('vt-api-key').value); api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k)); api.setRubrics({ ...cfg.rubrics, threshold: parseInt(document.getElementById('spam-threshold').value) }); api.setWhitelist(wl); document.getElementById('settings-modal').style.display='none'; addLog("Settings updated."); };
+    document.getElementById('backup-btn').onclick = async () => { if (await api.backupConfig()) addLog("Backup completed."); };
+    document.getElementById('restore-btn').onclick = async () => { if (await api.restoreConfig()) addLog("App restarting..."); };
     document.getElementById('reset-btn').onclick = () => document.getElementById('reset-modal').style.display = 'flex';
     document.getElementById('cancel-reset').onclick = () => document.getElementById('reset-modal').style.display = 'none';
-    document.getElementById('confirm-reset').onclick = async () => {
-        addLog("Saving final backup before reset...");
-        await api.backupConfig();
-        api.resetApp();
-    };
-    document.getElementById('rel-email').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'email', value: selected.sender }, originalFolder: selected.originalFolder });
-    document.getElementById('rel-ip').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'ip', value: selected.ip }, originalFolder: selected.originalFolder });
-    document.getElementById('rel-combo').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'combo', ip: selected.ip, domain: selected.domain }, originalFolder: selected.originalFolder });
-    document.getElementById('rel-domain').onclick = () => api.releaseEmail({ entryId: selected.entryId, whitelistEntry: { type: 'domain', value: selected.domain }, originalFolder: selected.originalFolder });
-    document.querySelectorAll('.resizer').forEach(r => {
-        r.onmousedown = (e) => {
-            const cell = r.parentElement; const col = cell.dataset.col; const startX = e.pageX; const startW = cell.offsetWidth;
-            const onMove = (ev) => { const w = startW + (ev.pageX - startX); if(w>50) { colWidths[col]=w+'px'; applyColWidths(); } };
-            const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); api.saveColumnWidths(colWidths); };
-            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
-        };
-    });
+    document.getElementById('confirm-reset').onclick = () => api.resetApp();
+    
+    async function handleRelease(type) {
+        const items = getSelectedItems();
+        if (!items.length) return;
+        addLog(`Initiating bulk release for ${items.length} items...`);
+        for (const i of items) {
+            let wlEntry = null;
+            if (type === 'email') wlEntry = { type: 'email', value: i.sender };
+            else if (type === 'ip') wlEntry = { type: 'ip', value: i.ip };
+            else if (type === 'domain') wlEntry = { type: 'domain', value: i.domain };
+            else if (type === 'combo') wlEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
+            
+            api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder });
+        }
+    }
+
+    document.getElementById('rel-email').onclick = () => handleRelease('email');
+    document.getElementById('rel-ip').onclick = () => handleRelease('ip');
+    document.getElementById('rel-domain').onclick = () => handleRelease('domain');
+    document.getElementById('rel-combo').onclick = () => handleRelease('combo');
+
     function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
-    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); renderList(); });
+    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { 
+        document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); 
+        c.classList.add('active'); 
+        selectedIds.clear();
+        lastSelectedIndex = -1;
+        renderList(); 
+    });
     document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
     function updateToggleUi(en) { const b = document.getElementById('scanner-toggle'); if(b) { b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } }
     api.onOutlookScanUpdate((data) => addLog(`${data.status}: ${data.details}`));
-    api.onScanFinished((m) => addLog(`${m} scan completed.`));
+    api.onLiveLog((msg) => addLog(msg));
     api.onStatusSync(updateToggleUi);
-    api.onEmailReleased(() => addLog("SUCCESS: Items Physically Restored & Verified."));
-    api.onEmailReleasedError((data) => {
-        addLog(`RESTORE FAILED: ${data.message}`);
-        alert(`CRITICAL SYNC ERROR:\n\n${data.message}\n\nPlease check Outlook manually.`);
+    api.onEmailReleased((data) => {
+        if (data && data.ok) {
+            addLog(`SUCCESS: Item ${data.entryId.substring(0,8)}... restored.`);
+        } else if (data) {
+            addLog(`FAILURE: ${data.message || 'Unknown error during release'}`);
+        }
     });
-    api.onStatsUpdate(updateDashboard);
-    async function init() { const cfg = await api.getConfig(); updateToggleUi(cfg.enabled); if(cfg.columnWidths) { colWidths = cfg.columnWidths; applyColWidths(); } document.getElementById('history-toggle').classList.toggle('active', cfg.historyScanEnabled); updateDashboard(await api.getStats()); }
+    api.onStatsUpdate((data) => { if (data && data.full) updateDashboard(data.stats); else if (data && data.delta) { ['malicious','suspicious','spam','safe'].forEach(c => { if (data.stats[c]) stats[c].push(...data.stats[c]); }); updateDashboard(stats); } });
+    async function init() { const cfg = await api.getConfig(); updateToggleUi(cfg.enabled); if (cfg.historyScanEnabled) { document.getElementById('history-toggle').classList.add('active'); } if (cfg.columnWidths) { colWidths = cfg.columnWidths; applyColWidths(); } updateDashboard(await api.getStats()); }
     init();
   </script>
 </body>

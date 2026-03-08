@@ -1,248 +1,631 @@
-const electron = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { shell } = require('electron');
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = electron;
-app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
-app.commandLine.appendSwitch('disable-http-cache');
-app.commandLine.appendSwitch('disable-gpu-cache');
-app.commandLine.appendSwitch('disk-cache-size', '1');
-app.commandLine.appendSwitch('media-cache-size', '1');
-const { execFile } = require('node:child_process');
+const fsPromises = fs.promises;
+const net = require('node:net');
+const crypto = require('node:crypto');
+const { spawn, execFile } = require('node:child_process');
+const electron = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, safeStorage, shell } = electron;
+
+function createCleanEnv() {
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    return env;
+}
+
+const isServiceMode = process.argv.includes('--service');
+
+if (!isServiceMode) {
+    if (!app.requestSingleInstanceLock()) {
+        app.exit();
+    } else {
+        app.on('second-instance', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+    }
+}
+
+process.env.ELECTRON_DISABLE_GPU = '1';
+process.env.ELECTRON_FORCE_WINDOW_MENU_BAR = '1';
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('disable-accelerated-2d-canvas');
+app.commandLine.appendSwitch('use-gl', 'swiftshader');
+app.commandLine.appendSwitch('log-level', '3');
+
 const APP_ROOT = __dirname;
 const LOG_DIR = path.join(APP_ROOT, 'logs');
 const DEBUG_LOG_PATH = path.join(LOG_DIR, 'debug.log');
-function logLine(section, details = '') {
-  const now = new Date();
-  const timestamp = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
-  const payload = `[${timestamp}] [${section}] ${details}\n`;
-  try { 
-    if (!fs.existsSync(LOG_DIR)) { fs.mkdirSync(LOG_DIR, { recursive: true }); }
-    fs.appendFileSync(DEBUG_LOG_PATH, payload, { encoding: 'utf8', flag: 'a' }); 
-  } catch (e) { console.error('Logging failed:', e); }
-}
-logLine('SESSION_START', 'MICROSOFT OUTLOOK SECURITY CENTER application launched.');
-process.on('uncaughtException', (error) => { logLine('CRITICAL_EXCEPTION', error.stack || error.message); });
-process.on('unhandledRejection', (reason) => { logLine('UNHANDLED_REJECTION', reason.stack || String(reason)); });
-const electronStoreModule = require('electron-store');
-const Store = electronStoreModule.default || electronStoreModule;
-const store = new Store({
-  projectName: 'microsoft-outlook-addon',
-  name: 'security-data',
-  defaults: {
-    processedIds: [],
-    stats: { spam: [], safe: [], malicious: [], suspicious: [] },
-    enabled: false,
-    historyScanEnabled: false,
-    vtApiKey: "80a58ac4dbf037bebb6190a350160f451932a4a3cd56085c34e5b6483e058b98",
-    spamKeywords: ["viagra", "lottery", "urgent", "inheritance", "winner", "prize", "verify your account", "bitcoin", "investment"],
-    rubrics: { pointsSystem: true, bodyAnalysis: true, friendlySender: true, wordDecoding: true, phraseMatching: true, threshold: 5 },
-    windowBounds: { width: 1500, height: 900 },
-    whitelist: { emails: [], ips: [], domains: [], combos: [] },
-    columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' },
-    schedule: { enabled: false, datetime: "" }
-  },
-});
+
+fs.mkdirSync(LOG_DIR, { recursive: true });
+fs.appendFileSync(DEBUG_LOG_PATH, `[${new Date().toISOString()}] [TRACE] Main script execution started. Mode: ${process.argv.includes('--service') ? 'SERVICE' : 'UI'}\n`);
+
+const MAX_LOG_SIZE = 5242880;
+const SHARED_DATA_PATH = 'C:\\ProgramData\\MicrosoftOutlookSecurity';
+const SERVICE_LEASE_PATH = path.join(SHARED_DATA_PATH, 'service.lease');
+const STORE_LOCK_PATH = path.join(SHARED_DATA_PATH, 'config.lock');
+const CONFIG_FILE_PATH = path.join(SHARED_DATA_PATH, 'config.json');
+const SCAN_WATCHDOG_TIMEOUT = 3600000;
+const UI_RECONNECT_INTERVAL = 5000;
+const MAX_IPC_LINE_LENGTH = 65536;
+const MAX_LIST_ITEMS = 500;
+
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function createPipeName() { return `\\\\.\\pipe\\microsoft_outlook_security_${process.pid}_${crypto.randomBytes(12).toString('hex')}`; }
+function createAuthToken() { return crypto.randomBytes(32).toString('hex'); }
+function clipString(value, maxLen = 512) { if (typeof value !== 'string') return ''; return value.length <= maxLen ? value : value.slice(0, maxLen); }
+function isPlainObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function safeJsonParse(text) { try { return JSON.parse(text); } catch { return null; } }
+function isProcessAlive(pid) { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch { return false; } }
+function execFileAsync(file, args, options = {}) { return new Promise(resolve => { execFile(file, args, options, (error, stdout = '', stderr = '') => { resolve({ error, stdout, stderr }); }); }); }
+
+let servicePipeName = '';
+let serviceAuthToken = '';
+let serviceOwnerPid = 0;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let isShuttingDown = false;
 let isScanning = false;
-let schedulerTimer = null;
 let currentScanChild = null;
-function startScheduler() {
-    if (schedulerTimer) clearInterval(schedulerTimer);
-    schedulerTimer = setInterval(() => {
-        const sched = store.get('schedule');
-        if (!sched || !sched.enabled) return;
-        const now = new Date();
-        const target = new Date(sched.datetime);
-        if (now >= target && !isScanning) {
-            logLine('SCHEDULED_SCAN', `Triggering one-time scheduled scan for: ${sched.datetime}`);
-            store.set('schedule', { enabled: false, datetime: sched.datetime });
-            runOutlookScanner('FullScan');
-        }
-    }, 30000);
-}
-function updateAppIcons(enabled) {
-    const iconSuffix = enabled ? 'on' : 'off';
-    const appIcon = path.join(APP_ROOT, `icon_${iconSuffix}.png`);
-    const trayIcon = path.join(APP_ROOT, `tray_${iconSuffix}.png`);
-    if (mainWindow) mainWindow.setIcon(nativeImage.createFromPath(appIcon));
-    if (tray) tray.setImage(nativeImage.createFromPath(trayIcon));
-}
-function runOutlookScanner(mode = 'OnAccess') {
-  if (!store.get('enabled') && mode === 'OnAccess') { logLine('SCAN_SKIP', 'Protection is disabled.'); return; }
-  if (mode === 'FullScan' && !store.get('historyScanEnabled')) { logLine('SCAN_HALT', 'History scan disabled.'); return; }
-  if (isScanning) { logLine('SCAN_SKIP', 'Scanner already running.'); return; }
-  isScanning = true;
-  logLine('SCAN_START', `Mode: ${mode}`);
-  const psScript = path.join(APP_ROOT, 'outlook-scanner.ps1');
-  const exchangeFile = path.join(app.getPath('temp'), `outlook_security_exchange_${Date.now()}.json`);
-  const configExchange = { mode: mode, processedIds: store.get('processedIds'), vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist') };
-  try { 
-      fs.writeFileSync(exchangeFile, JSON.stringify(configExchange), 'utf8'); 
-      logLine('EXCHANGE_CREATE', exchangeFile);
-  } catch (e) { logLine('CRITICAL_ERROR', 'Exchange failed: ' + e.message); isScanning = false; return; }
-  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript, '-ExchangeFile', exchangeFile];
-  const child = execFile('powershell.exe', args, { windowsHide: true }, (error, stdout, stderr) => {
-    isScanning = false; currentScanChild = null;
-    try { if (fs.existsSync(exchangeFile)) fs.unlinkSync(exchangeFile); } catch(e) {}
-    if (error) logLine('SCAN_ERROR', error.message);
-    logLine('SCAN_COMPLETE', mode);
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('scan-finished', mode);
-  });
-  currentScanChild = child;
-  child.stdout.on('data', (data) => {
-    data.trim().split('\n').forEach(line => {
-      try {
-        const result = JSON.parse(line);
-        if (['Finished', 'THREAT BLOCKED', 'CAUTION', 'SPAM FILTERED'].includes(result.status)) {
-          const currentIds = store.get('processedIds');
-          if (!currentIds.includes(result.entryId)) {
-            currentIds.push(result.entryId); store.set('processedIds', currentIds);
-            const stats = store.get('stats'); const cat = result.verdict.toLowerCase();
-            if (stats[cat]) { 
-                stats[cat].push({ subject: result.details, date: result.timestamp, entryId: result.entryId, sender: result.sender, ip: result.ip, domain: result.domain, originalFolder: result.originalFolder, fullHeaders: result.fullHeaders, score: result.score, action: result.action, tier: result.tier }); 
-                store.set('stats', stats); 
-            }
-            const reasonNote = result.tier ? ` | Reason: ${result.tier}` : '';
-            const actionNote = result.action ? ` | Action: ${result.action}` : '';
-            const ipNote = result.ip && result.ip !== 'N/A' ? ` | IP: ${result.ip}` : '';
-            logLine('SCAN_RESULT', `[${result.verdict}] ${result.details}${reasonNote}${actionNote}${ipNote}`);
-          }
-        }
-        if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.send('outlook-scan-update', result); mainWindow.webContents.send('stats-update', store.get('stats')); }
-      } catch (e) {}
-    });
-  });
-}
-function createWindow() {
-  const isEnabled = store.get('enabled');
-  mainWindow = new BrowserWindow({ 
-    ...store.get('windowBounds'), 
-    backgroundColor: '#0a0e1c', 
-    icon: path.join(APP_ROOT, `icon_${isEnabled ? 'on' : 'off'}.png`), 
-    show: false, 
-    closable: true, 
-    webPreferences: { 
-      preload: path.join(APP_ROOT, 'preload.js'), 
-      nodeIntegration: false, 
-      contextIsolation: true 
-    } 
-  });
-  mainWindow.loadFile(path.join(APP_ROOT, 'index.html'));
-  mainWindow.setMenuBarVisibility(false);
+let scanWatchdogTimer = null;
+let pipeServer = null;
+let activeConnections = new Set();
+let lastHeartbeat = Date.now();
+let vtSessionKey = '';
+let lastServiceSpawn = 0;
+let lastOutlookState = true;
+let lastOutlookLaunchTime = 0;
+let outlookLaunchThrottled = false;
+let outlookErrorLogged = false;
+let serviceLeaseOwned = false;
+let uiPipeClient = null;
+let uiReconnectTimer = null;
+let serviceSpawnInFlight = false;
+let serviceSpawnPid = 0;
+let serviceSession = null;
+let serviceConnectFailures = 0;
+let outlookStatusInterval = null;
+let serviceWatchdogInterval = null;
+let uiStatsInterval = null;
+let storeWriteQueue = Promise.resolve();
 
-  mainWindow.on('close', (event) => { 
-    if (!isQuitting) { 
-      isQuitting = true; 
-      app.quit();
-    } 
-  });
-
-  mainWindow.on('resize', () => { if(!mainWindow.isMaximized()) store.set('windowBounds', mainWindow.getBounds()); });
-  mainWindow.on('move', () => { store.set('windowBounds', mainWindow.getBounds()); });
-
-  mainWindow.once('ready-to-show', () => { 
-      mainWindow.minimize();
-      mainWindow.showInactive(); 
-      logLine('APP_READY', 'Dashboard loaded (minimized to taskbar)');
-      if (store.get('historyScanEnabled')) runOutlookScanner('FullScan'); else runOutlookScanner('OnAccess'); 
-  });
+function ensureConfigIntegrity() {
+    try { fs.mkdirSync(SHARED_DATA_PATH, { recursive: true }); } catch {}
+    try {
+        if (!fs.existsSync(CONFIG_FILE_PATH)) { fs.writeFileSync(CONFIG_FILE_PATH, '{}', 'utf8'); return; }
+        const raw = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
+        if (!safeJsonParse(raw)) fs.writeFileSync(CONFIG_FILE_PATH, '{}', 'utf8');
+    } catch { try { fs.writeFileSync(CONFIG_FILE_PATH, '{}', 'utf8'); } catch {} }
 }
 
-app.on('ready', () => { createWindow(); startScheduler(); });
-ipcMain.handle('get-stats', () => store.get('stats'));
-ipcMain.handle('get-config', () => ({ enabled: store.get('enabled'), historyScanEnabled: store.get('historyScanEnabled'), vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), columnWidths: store.get('columnWidths'), schedule: store.get('schedule') }));
-ipcMain.on('set-enabled', (event, val) => { 
-    logLine('USER_ACTION', `Protection set ${val ? 'ON' : 'OFF'}`); 
-    store.set('enabled', val); 
-    updateAppIcons(val); 
-    if (val) {
-        runOutlookScanner('OnAccess');
-    } else if (currentScanChild) {
-        logLine('USER_ACTION', 'Scanner halted by user (Protection Disabled).');
-        currentScanChild.kill();
-        isScanning = false;
-        currentScanChild = null;
-    }
+ensureConfigIntegrity();
+const Store = require('electron-store');
+const store = new Store({
+    cwd: SHARED_DATA_PATH, name: 'config', clearInvalidConfig: true,
+    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] }, enabled: false, historyScanEnabled: false, vtApiKey: '', vtApiKeyEncrypted: true, privacyMode: false, spamKeywords: ['viagra', 'lottery', 'urgent', 'inheritance', 'winner', 'prize', 'verify your account', 'bitcoin', 'investment'], rubrics: { pointsSystem: true, threshold: 5, toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true }, weights: { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 } }, windowBounds: { width: 1500, height: 900 }, whitelist: { emails: [], ips: [], domains: [], combos: [] }, columnWidths: { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' }, schedule: { enabled: false, datetime: '' }, lastScanStartTime: 0 }
 });
-ipcMain.on('set-history-enabled', (event, val) => { 
-    logLine('USER_ACTION', `History scan set ${val ? 'ON' : 'OFF'}`); 
-    store.set('historyScanEnabled', val); 
-    if(val) { runOutlookScanner('FullScan'); }
-    else if (currentScanChild) { logLine('USER_ACTION', 'History scan halted by user.'); currentScanChild.kill(); isScanning = false; currentScanChild = null; }
-});
-ipcMain.on('set-vt-key', (event, key) => { logLine('USER_ACTION', 'VT Key updated'); store.set('vtApiKey', key); });
-ipcMain.on('set-spam-keywords', (event, keywords) => { logLine('USER_ACTION', 'Spam keywords updated'); store.set('spamKeywords', keywords); });
-ipcMain.on('set-rubrics', (event, rubrics) => { logLine('USER_ACTION', 'Spam rubrics updated'); store.set('rubrics', rubrics); });
-ipcMain.on('set-whitelist', (event, whitelist) => { logLine('USER_ACTION', 'Whitelist updated'); store.set('whitelist', whitelist); });
-ipcMain.on('set-schedule', (event, val) => { logLine('USER_ACTION', `Scan schedule updated: ${val.enabled ? 'ON' : 'OFF'} at ${val.datetime}`); store.set('schedule', val); startScheduler(); });
-ipcMain.on('save-column-widths', (event, widths) => { store.set('columnWidths', widths); });
-ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
-ipcMain.on('app-reset', () => { logLine('USER_ACTION', 'App reset initiated'); store.clear(); app.relaunch(); app.exit(); });
-ipcMain.handle('backup-config', async () => {
-    const config = { vtApiKey: store.get('vtApiKey'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), schedule: store.get('schedule'), processedIds: store.get('processedIds') };
-    const { filePath } = await dialog.showSaveDialog(mainWindow, { title: 'Export Security Configuration', defaultPath: path.join(app.getPath('downloads'), `outlook_security_backup_${Date.now()}.json`), filters: [{ name: 'JSON Files', extensions: ['json'] }] });
-    if (filePath) { fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8'); logLine('USER_ACTION', `Configuration backed up to: ${filePath}`); return true; }
-    return false;
-});
-ipcMain.handle('restore-config', async () => {
-    const { filePaths } = await dialog.showOpenDialog(mainWindow, { title: 'Import Security Configuration', filters: [{ name: 'JSON Files', extensions: ['json'] }], properties: ['openFile'] });
-    if (filePaths && filePaths[0]) {
+
+const rubrics = store.get('rubrics');
+if (rubrics && rubrics.weights && rubrics.weights.dmarc === 30 && rubrics.weights.alignment === 20 && rubrics.weights.dkim === 10) {
+    rubrics.weights = { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 };
+    store.set('rubrics', rubrics);
+}
+
+async function logLine(section, details = '', skipBroadcast = false) {
+    const now = new Date();
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const role = isServiceMode ? 'SVC' : 'UI';
+    const payload = `[${ts}] [${role}] [${clipString(section, 64)}] ${clipString(String(details || ''), 4000)}`;
+    try {
+        await fsPromises.mkdir(LOG_DIR, { recursive: true });
         try {
-            const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
-            if (data.vtApiKey !== undefined) store.set('vtApiKey', data.vtApiKey);
-            if (data.spamKeywords) store.set('spamKeywords', data.spamKeywords);
-            if (data.rubrics) store.set('rubrics', data.rubrics);
-            if (data.whitelist) store.set('whitelist', data.whitelist);
-            if (data.schedule) store.set('schedule', data.schedule);
-            if (data.processedIds) store.set('processedIds', data.processedIds);
-            logLine('USER_ACTION', `Configuration restored from: ${filePaths[0]}`);
-            app.relaunch(); app.exit();
-            return true;
-        } catch (e) { logLine('CRITICAL_ERROR', `Restore failed: ${e.message}`); return false; }
-    }
-    return false;
-});
-ipcMain.on('release-email', (event, { entryId, whitelistEntry, originalFolder }) => {
-    logLine('USER_ACTION', `Attempting confirmed release for ID: ${entryId.substring(0,10)}...`);
-    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(APP_ROOT, 'outlook-scanner.ps1'), '-Mode', 'Release', '-TargetEntryId', entryId, '-OriginalFolder', originalFolder || ""], { windowsHide: true }, (error, stdout) => {
-        let success = !error; let errorMessage = "";
-        if (stdout) { try { const res = JSON.parse(stdout); if (res.status === 'Error') { success = false; errorMessage = res.message; } else { logLine('APP_EVENT', `Physical Move Verified: ${res.message}`); } } catch(e) {} }
-        if (success) {
-            if (whitelistEntry) {
-                const wl = store.get('whitelist'); const stats = store.get('stats'); let addedValue = "";
-                if (whitelistEntry.type === 'email') { if (!wl.emails.includes(whitelistEntry.value)) { wl.emails.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
-                else if (whitelistEntry.type === 'ip') { if (!wl.ips.includes(whitelistEntry.value)) { wl.ips.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
-                else if (whitelistEntry.type === 'domain') { if (!wl.domains.includes(whitelistEntry.value)) { wl.domains.push(whitelistEntry.value); addedValue = whitelistEntry.value; } }
-                else if (whitelistEntry.type === 'combo') { const exists = wl.combos.some(c => c.ip === whitelistEntry.ip && c.domain === whitelistEntry.domain); if (!exists) { wl.combos.push({ ip: whitelistEntry.ip, domain: whitelistEntry.domain }); addedValue = `${whitelistEntry.domain}:${whitelistEntry.ip}`; } }
-                if (addedValue) { store.set('whitelist', wl); logLine('APP_EVENT', `Whitelist Updated: ${whitelistEntry.type.toUpperCase()} -> ${addedValue}`); }
-                const itemsToMove = [];
-                ['malicious', 'suspicious', 'spam'].forEach(cat => {
-                    const remaining = [];
-                    stats[cat].forEach(item => {
-                        let match = false;
-                        if (whitelistEntry.type === 'email' && item.sender === whitelistEntry.value) match = true;
-                        else if (whitelistEntry.type === 'ip' && item.ip === whitelistEntry.value) match = true;
-                        else if (whitelistEntry.type === 'domain' && item.domain === whitelistEntry.value) match = true;
-                        else if (whitelistEntry.type === 'combo' && item.ip === whitelistEntry.ip && item.domain === whitelistEntry.domain) match = true;
-                        else if (item.entryId === entryId) match = true;
-                        if (match) { item.action = "Restored & Whitelisted"; item.tier = `User Action: ${whitelistEntry.type.toUpperCase()}`; itemsToMove.push(item); }
-                        else { remaining.push(item); }
-                    });
-                    stats[cat] = remaining;
-                });
-                itemsToMove.forEach(item => { if (!stats.safe.some(c => c.entryId === item.entryId)) stats.safe.push(item); });
-                store.set('stats', stats); if (mainWindow) mainWindow.webContents.send('stats-update', stats);
+            const stats = await fsPromises.stat(DEBUG_LOG_PATH);
+            if (stats.size > MAX_LOG_SIZE) {
+                const oldPath = `${DEBUG_LOG_PATH}.old`;
+                try { await fsPromises.unlink(oldPath); } catch {}
+                await fsPromises.rename(DEBUG_LOG_PATH, oldPath);
             }
-            logLine('APP_EVENT', `Release transaction completed: ${entryId.substring(0,10)}...`);
-            event.reply('email-released-success', entryId);
-        } else {
-            logLine('RELEASE_ERROR', `Physical Restore Blocked: ${errorMessage || error.message}`);
-            event.reply('email-released-error', { entryId, message: errorMessage || "Outlook blocked the move operation. Is the item open in another window?" });
+        } catch {}
+        await fsPromises.appendFile(DEBUG_LOG_PATH, payload + '\n', 'utf8');
+        
+        if (isServiceMode) console.log(payload);
+
+        if (!skipBroadcast) {
+            const displayMsg = `${clipString(section, 64)}: ${clipString(String(details || ''), 4000)}`;
+            if (isServiceMode) broadcastToUi({ type: 'log', message: displayMsg });
+            else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('live-log', displayMsg);
+        }
+    } catch {}
+}
+
+function broadcastToUi(data) {
+    if (!isServiceMode) return;
+    const msg = `${JSON.stringify(data)}\n`;
+    activeConnections.forEach(socket => {
+        if (!socket || socket.destroyed || !socket.writable) { activeConnections.delete(socket); return; }
+        try { socket.write(msg); } catch { activeConnections.delete(socket); }
+    });
+}
+
+process.on('uncaughtException', async error => { await logLine('CRITICAL', error.stack || error.message || String(error), true); await cleanupProcesses(); });
+process.on('unhandledRejection', async reason => { await logLine('REJECTION', reason.stack || String(reason), true); await cleanupProcesses(); });
+
+async function acquireFileLock(lockPath, timeoutMs = 10000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        try {
+            const h = await fsPromises.open(lockPath, 'wx');
+            return async () => { try { await h.close(); } catch {} try { await fsPromises.unlink(lockPath); } catch {} };
+        } catch (e) {
+            if (e.code !== 'EEXIST') throw e;
+            try { const s = await fsPromises.stat(lockPath); if (Date.now() - s.mtimeMs > 30000) { try { await fsPromises.unlink(lockPath); } catch {} } } catch {}
+            await delay(150 + Math.floor(Math.random() * 50));
+        }
+    }
+    throw new Error('LOCK_TIMEOUT');
+}
+
+async function forceReloadStore() {
+    try {
+        ensureConfigIntegrity();
+        const raw = await fsPromises.readFile(store.path, 'utf8');
+        const p = safeJsonParse(raw);
+        if (p) store.store = { ...store.store, ...p };
+    } catch {}
+}
+
+async function safeStoreUpdate(mutator) {
+    storeWriteQueue = storeWriteQueue.then(async () => {
+        const release = await acquireFileLock(STORE_LOCK_PATH);
+        try {
+            await forceReloadStore();
+            const snap = JSON.parse(JSON.stringify(store.store || {}));
+            await mutator(snap);
+            const tmp = `${store.path}.${process.pid}.${Date.now()}.tmp`;
+            await fsPromises.writeFile(tmp, JSON.stringify(snap), 'utf8');
+            await fsPromises.rename(tmp, store.path);
+            store.store = snap;
+            return true;
+        } catch (e) { await logLine('STORE_ERROR', e.message, true); return false; }
+        finally { await release(); }
+    }).catch(async e => { await logLine('STORE_QUEUE_ERROR', e.message, true); return false; });
+    return storeWriteQueue;
+}
+
+async function safeStoreSet(key, value) { return safeStoreUpdate(s => { s[key] = value; }); }
+async function safeStoreMerge(values) { return safeStoreUpdate(s => { Object.assign(s, values); }); }
+
+async function acquireServiceLease() {
+    if (!isServiceMode) return true;
+    try {
+        const raw = await fsPromises.readFile(SERVICE_LEASE_PATH, 'utf8');
+        const lease = safeJsonParse(raw);
+        if (lease && isProcessAlive(lease.pid) && lease.pid !== process.pid) return false;
+        await fsPromises.unlink(SERVICE_LEASE_PATH);
+    } catch {}
+    try {
+        await fsPromises.writeFile(SERVICE_LEASE_PATH, JSON.stringify({ pid: process.pid, ownerPid: serviceOwnerPid, pipeName: servicePipeName, createdAt: Date.now() }), { encoding: 'utf8', flag: 'wx' });
+        serviceLeaseOwned = true;
+        return true;
+    } catch { return false; }
+}
+
+async function releaseServiceLease() {
+    if (!serviceLeaseOwned) return;
+    try {
+        const raw = await fsPromises.readFile(SERVICE_LEASE_PATH, 'utf8');
+        const l = safeJsonParse(raw);
+        if (l && l.pid === process.pid) await fsPromises.unlink(SERVICE_LEASE_PATH);
+    } catch {}
+    serviceLeaseOwned = false;
+}
+
+function buildScannerCommandPayload(mode) {
+    const finalToken = isServiceMode ? serviceAuthToken : (serviceSession ? serviceSession.token : '');
+    return { mode: mode === 'FullScan' ? 'FullScan' : 'OnAccess', processedIds: store.get('processedIds'), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), vtKey: vtSessionKey || decryptKey(store.get('vtApiKey')), privacyMode: store.get('privacyMode'), authToken: finalToken };
+}
+
+function summarizeEvidence(b64) {
+    if (typeof b64 !== 'string' || !b64.length) return { hash: '', size: 0 };
+    const capped = b64.length > 524288 ? b64.slice(0, 524288) : b64;
+    return { hash: crypto.createHash('sha256').update(capped, 'utf8').digest('hex'), size: Buffer.byteLength(b64, 'utf8') };
+}
+
+function sanitizeScannerResult(r) {
+    const s = (v, l) => clipString(String(v || ''), l);
+    const decodeB64 = (b) => {
+        if (!b) return '';
+        try { return Buffer.from(b, 'base64').toString('utf8'); } catch { return ''; }
+    };
+    return { 
+        timestamp: s(r.timestamp, 64), 
+        status: s(r.status, 64), 
+        details: s(r.details, 1024), 
+        verdict: s(r.verdict, 64), 
+        action: s(r.action, 128), 
+        entryId: s(r.entryId, 1024), 
+        tier: s(r.tier, 512), 
+        sender: s(r.sender, 320), 
+        ip: s(r.ip, 64), 
+        domain: s(r.domain, 320), 
+        originalFolder: s(r.originalFolder, 1024), 
+        score: Number.isFinite(Number(r.score)) ? Number(r.score) : 0, 
+        fullHeaders: decodeB64(r.fullHeaders), 
+        body: clipString(decodeB64(r.body), 50000) 
+    };
+}
+
+async function startPipeServer() {
+    if (!isServiceMode || pipeServer) return;
+    pipeServer = net.createServer(socket => {
+        socket.setEncoding('utf8');
+        let auth = false; let buf = '';
+        const close = () => { activeConnections.delete(socket); try { socket.destroy(); } catch {} };
+        socket.on('data', async chunk => {
+            buf += chunk; if (buf.length > MAX_IPC_LINE_LENGTH * 4) { close(); return; }
+            let idx = buf.indexOf('\n');
+            while (idx > -1) {
+                const raw = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1); idx = buf.indexOf('\n'); if (!raw) continue;
+                const msg = safeJsonParse(raw); if (!msg || !isPlainObject(msg)) { if (!auth) close(); return; }
+                if (!auth) {
+                    if (msg.type === 'auth' && msg.token === serviceAuthToken) { auth = true; activeConnections.add(socket); socket.write(`${JSON.stringify({ type: 'auth-ok' })}\n`); await logLine('IPC', 'UI connected'); continue; }
+                    close(); return;
+                }
+                if (msg.type !== 'cmd') continue;
+                if (['Stop', 'OnAccess', 'FullScan'].includes(msg.payload)) {
+                    await cleanupProcesses(); isScanning = false;
+                    if (msg.payload === 'Stop') await logLine('SVC', 'Protection paused');
+                    else { await forceReloadStore(); await checkOutlookStatus(); runOutlookScanner(msg.payload); }
+                }
+            }
+        });
+        socket.on('close', () => activeConnections.delete(socket));
+        socket.on('error', () => activeConnections.delete(socket));
+    });
+    pipeServer.on('error', async e => { await logLine('IPC_ERROR', e.message, true); if (['EADDRINUSE', 'EACCES', 'EPERM'].includes(e.code)) await shutdown(1); });
+    pipeServer.listen(servicePipeName);
+}
+
+async function closePipeServer() {
+    if (!pipeServer) return;
+    const s = pipeServer; pipeServer = null;
+    await new Promise(resolve => { try { s.close(() => resolve()); } catch { resolve(); } });
+    activeConnections.forEach(c => { try { c.destroy(); } catch {} }); activeConnections.clear();
+}
+
+async function checkOutlookStatus() {
+    const { stdout } = await execFileAsync('tasklist', ['/FI', 'IMAGENAME eq outlook.exe', '/NH'], { windowsHide: true });
+    const run = !!(stdout && stdout.toLowerCase().includes('outlook.exe'));
+    if (!run) {
+        if (!outlookErrorLogged) { await logLine('SERVICE', 'Error: Microsoft Outlook is not Opened!'); outlookErrorLogged = true; }
+        if (store.get('enabled') && !outlookLaunchThrottled) {
+            const now = Date.now();
+            if (lastOutlookLaunchTime > 0 && now - lastOutlookLaunchTime < 20000) { outlookLaunchThrottled = true; await logLine('SERVICE', 'Outlook auto-launch suspended to prevent loops (detected rapid closure).'); }
+            else { lastOutlookLaunchTime = now; await logLine('SERVICE', 'Attempting auto-launch (minimized)...'); try { spawn('cmd.exe', ['/c', 'start', '/min', 'outlook.exe'], { windowsHide: true, detached: true, stdio: 'ignore' }).unref(); } catch (e) { await logLine('SERVICE', `Launch failed: ${e.message}`); } }
+        }
+        lastOutlookState = false;
+    } else {
+        if (!lastOutlookState) { await logLine('SERVICE', 'Microsoft Outlook detected. Security resumed.'); outlookErrorLogged = false; outlookLaunchThrottled = false; }
+        lastOutlookState = true;
+    }
+}
+
+function clearTimers() {
+    [scanWatchdogTimer, uiReconnectTimer, outlookStatusInterval, serviceWatchdogInterval, uiStatsInterval].forEach(t => { if (t) isServiceMode ? clearInterval(t) : clearTimeout(t); });
+}
+
+async function startServiceWatchdog() {
+    await startPipeServer(); await checkOutlookStatus();
+    outlookStatusInterval = setInterval(checkOutlookStatus, 10000);
+    serviceWatchdogInterval = setInterval(async () => {
+        const now = Date.now();
+        if (isScanning && now - lastHeartbeat > 300000) { await cleanupProcesses(); isScanning = false; }
+        if (!isScanning) {
+            await forceReloadStore();
+            if (store.get('enabled') && now - (store.get('lastScanStartTime') || 0) > 300000) runOutlookScanner(store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess');
+        }
+    }, 60000);
+}
+
+async function cleanupProcesses() {
+    if (!currentScanChild) return;
+    const c = currentScanChild; currentScanChild = null;
+    await new Promise(r => {
+        let done = false; const finish = () => { if (!done) { done = true; r(); } };
+        const t = setTimeout(async () => { if (!done) { try { await execFileAsync('taskkill', ['/F', '/T', '/PID', String(c.pid)], { windowsHide: true }); } catch {} finish(); } }, 5000);
+        c.once('exit', () => { clearTimeout(t); finish(); }); try { c.kill(); } catch {}
+    });
+}
+
+function scheduleUiReconnect(ms = UI_RECONNECT_INTERVAL) {
+    if (isServiceMode || uiReconnectTimer) return;
+    uiReconnectTimer = setTimeout(() => { uiReconnectTimer = null; connectToService(); }, ms);
+}
+
+function sendCommandToService(p) {
+    if (!uiPipeClient || uiPipeClient.destroyed) return false;
+    try { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: p, vtKey: decryptKey(store.get('vtApiKey')) }) + '\n'); return true; } catch { return false; }
+}
+
+function hasActiveOwnedService() {
+    try { const raw = fs.readFileSync(SERVICE_LEASE_PATH, 'utf8'); const l = safeJsonParse(raw); return l && isProcessAlive(l.pid) && l.ownerPid === process.pid; } catch { return false; }
+}
+
+function spawnService(force = false) {
+    if (isServiceMode || serviceSpawnInFlight) return;
+    const now = Date.now(); if (now - lastServiceSpawn < 5000) return;
+    if (!serviceSession || force) serviceSession = { pipeName: createPipeName(), token: createAuthToken() };
+    lastServiceSpawn = now; serviceSpawnInFlight = true;
+    logLine('UI', `Spawning service process (force=${force})...`);
+    
+    const env = createCleanEnv();
+    env.SVC_HANDSHAKE = JSON.stringify({ pipeName: serviceSession.pipeName, authToken: serviceSession.token, ownerPid: process.pid });
+    
+    const c = spawn(process.execPath, [APP_ROOT, '--service', '--disable-gpu', '--use-gl=disabled'], { detached: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env });
+    serviceSpawnPid = c.pid;
+    c.stdout.on('data', d => {
+        const s = d.toString().trim();
+        if (s) logLine('SVC_OUT', s);
+        else logLine('SVC_OUT', `<WS:${d.length}>`);
+    });
+    c.stderr.on('data', d => {
+        const s = d.toString().trim();
+        if (s) logLine('SVC_ERR', s);
+        else logLine('SVC_ERR', `<WS:${d.length}>`);
+    });
+    c.once('exit', (code, signal) => { 
+        logLine('UI', `Service process exited (code=${code}, signal=${signal})`);
+        if (serviceSpawnPid === c.pid) serviceSpawnPid = 0; 
+    });
+    setTimeout(() => { serviceSpawnInFlight = false; }, 2000);
+}
+
+let isConnecting = false;
+function connectToService() {
+    if (isServiceMode || isConnecting) return;
+    if (!serviceSession) spawnService(true);
+    if (!serviceSession) return;
+    isConnecting = true; destroyUiPipeClient();
+    const c = net.connect(serviceSession.pipeName); uiPipeClient = c;
+    let auth = false; let buf = '';
+    const dis = () => {
+        isConnecting = false; if (uiPipeClient !== c) return; destroyUiPipeClient();
+        if (!auth) serviceConnectFailures++; else serviceConnectFailures = 0;
+        const rot = !auth && serviceConnectFailures >= 3;
+        if (rot || !hasActiveOwnedService()) spawnService(rot);
+        scheduleUiReconnect(rot ? 1500 : UI_RECONNECT_INTERVAL);
+    };
+    c.on('connect', () => { try { c.write(JSON.stringify({ type: 'auth', token: serviceSession.token }) + '\n'); } catch { dis(); } });
+    c.on('data', d => {
+        buf += d.toString(); if (buf.length > MAX_IPC_LINE_LENGTH * 4) { dis(); return; }
+        let idx = buf.indexOf('\n');
+        while (idx > -1) {
+            const raw = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1); idx = buf.indexOf('\n'); if (!raw) continue;
+            const m = safeJsonParse(raw); if (!m || !isPlainObject(m)) continue;
+            if (!auth) { if (m.type === 'auth-ok') { auth = true; isConnecting = false; serviceConnectFailures = 0; sendCommandToService(store.get('enabled') ? (store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess') : 'Stop'); } else dis(); return; }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (m.type === 'scan-update' && m.data) mainWindow.webContents.send('outlook-scan-update', m.data);
+                if (m.type === 'log') mainWindow.webContents.send('live-log', m.message);
+            }
         }
     });
+    c.on('error', dis); c.on('close', dis);
+}
+
+async function runOutlookScanner(mode = 'OnAccess') {
+    if (!isServiceMode) { sendCommandToService(mode); return; }
+    if (!store.get('enabled') || isScanning) return;
+    isScanning = true; lastHeartbeat = Date.now(); await safeStoreSet('lastScanStartTime', Date.now());
+    await logLine('SCAN_START', `Initiating ${mode}`);
+    if (scanWatchdogTimer) clearTimeout(scanWatchdogTimer);
+    scanWatchdogTimer = setTimeout(async () => { if (isScanning) { await cleanupProcesses(); isScanning = false; await logLine('SCAN_WATCHDOG', 'Timeout'); } }, SCAN_WATCHDOG_TIMEOUT);
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', path.join(APP_ROOT, 'outlook-scanner.ps1'), '-ParentPid', process.pid.toString()], { windowsHide: true });
+    currentScanChild = child;
+    child.stdin.write(JSON.stringify(buildScannerCommandPayload(mode)) + '\n'); child.stdin.end();
+    let out = ''; let err = '';
+    child.stdout.on('data', async d => {
+        out += d.toString(); let idx = out.indexOf('\n');
+        while (idx > -1) {
+            const line = out.slice(0, idx).trim(); out = out.slice(idx + 1); idx = out.indexOf('\n'); if (!line) continue;
+            const p = safeJsonParse(line); if (!p) continue;
+            if (p.type === 'heartbeat') { lastHeartbeat = Date.now(); continue; }
+            const r = sanitizeScannerResult(p); const uiP = { ...r }; delete uiP.fullHeaders; delete uiP.body; broadcastToUi({ type: 'scan-update', data: uiP });
+            if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'CAUTION'].includes(r.status)) {
+                await forceReloadStore(); const ids = Array.isArray(store.get('processedIds')) ? store.get('processedIds').slice(-5000) : [];
+                if (r.entryId && !ids.includes(r.entryId)) {
+                    ids.push(r.entryId); const stats = store.get('stats') || { spam: [], safe: [], malicious: [], suspicious: [] }; const cat = r.verdict.toLowerCase(); if (!Array.isArray(stats[cat])) stats[cat] = [];
+                    const hMeta = summarizeEvidence(r.fullHeaders); const bMeta = summarizeEvidence(r.body);
+                    stats[cat].push({ 
+                        subject: r.details, 
+                        date: r.timestamp, 
+                        entryId: r.entryId, 
+                        sender: r.sender, 
+                        ip: r.ip, 
+                        domain: r.domain, 
+                        originalFolder: r.originalFolder, 
+                        score: r.score, 
+                        action: r.action, 
+                        tier: r.tier, 
+                        fullHeaders: r.fullHeaders,
+                        body: r.body,
+                        headerHash: hMeta.hash, 
+                        headerSize: hMeta.size, 
+                        bodyHash: bMeta.hash, 
+                        bodySize: bMeta.size 
+                    });
+                    if (stats[cat].length > 1000) stats[cat] = stats[cat].slice(-1000); await safeStoreMerge({ processedIds: ids.slice(-5000), stats }); await logLine('AUDIT', `[${r.verdict}] ${r.details}`);
+                }
+            }
+        }
+    });
+    child.stderr.on('data', d => { err += d.toString(); if (err.length > 12000) err = err.slice(-12000); });
+    child.on('error', async e => { isScanning = false; currentScanChild = null; await logLine('SCAN_ERROR', e.message, true); });
+    child.on('exit', async () => { isScanning = false; currentScanChild = null; if (err.trim()) await logLine('SCAN_STDERR', err.trim(), true); });
+}
+
+function createTray() {
+    const en = store.get('enabled'); tray = new Tray(nativeImage.createFromPath(path.join(APP_ROOT, `tray_${en ? 'on' : 'off'}.png`)));
+    const update = () => {
+        const cur = !!store.get('enabled');
+        tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Show Security Dashboard', click: () => { if (mainWindow) mainWindow.show(); } }, { label: cur ? 'Disable Microsoft Outlook Security' : 'Enable Microsoft Outlook Security', click: async () => {
+            const next = !cur; await safeStoreSet('enabled', next);
+            if (tray) tray.setImage(nativeImage.createFromPath(path.join(APP_ROOT, `tray_${next ? 'on' : 'off'}.png`)));
+            if (mainWindow) { mainWindow.setIcon(path.join(APP_ROOT, `icon_${next ? 'on' : 'off'}.png`)); mainWindow.webContents.send('status-sync', next); }
+            sendCommandToService(next ? (store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess') : 'Stop'); await checkOutlookStatus(); update();
+        } }, { type: 'separator' }, { label: 'Close Microsoft Outlook Security', click: async () => { isQuitting = true; await shutdown(0); } }]));
+    };
+    tray.setToolTip('OUTLOOK SECURITY'); update(); tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+}
+
+function createWindow() {
+    const en = !!store.get('enabled'); const b = store.get('windowBounds') || { width: 1500, height: 900 };
+    mainWindow = new BrowserWindow({ width: b.width, height: b.height, backgroundColor: '#0a0e1c', icon: path.join(APP_ROOT, `icon_${en ? 'on' : 'off'}.png`), show: false, closable: false, webPreferences: { preload: path.join(APP_ROOT, 'preload.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    mainWindow.loadFile(path.join(APP_ROOT, 'index.html'));
+    mainWindow.on('close', e => { if (!isQuitting) { e.preventDefault(); mainWindow.hide(); } });
+    mainWindow.on('resize', async () => { if (mainWindow && !mainWindow.isMaximized()) await safeStoreSet('windowBounds', mainWindow.getBounds()); });
+    const showWindow = () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } };
+    mainWindow.once('ready-to-show', showWindow);
+    setTimeout(showWindow, 5000);
+    mainWindow.once('ready-to-show', () => { uiStatsInterval = setInterval(async () => { if (mainWindow) { await forceReloadStore(); mainWindow.webContents.send('stats-update', { full: true, stats: store.get('stats') }); } }, 5000); });
+}
+
+async function shutdown(code = 0) {
+    if (isShuttingDown) return; isShuttingDown = true; clearTimers(); destroyUiPipeClient(); await cleanupProcesses(); await closePipeServer();
+    if (!isServiceMode && serviceSpawnPid) { try { process.kill(serviceSpawnPid, 'SIGKILL'); } catch {} }
+    await releaseServiceLease(); app.exit(code);
+}
+
+app.on('will-quit', e => { if (!isShuttingDown) { e.preventDefault(); shutdown(0); } });
+
+app.on('ready', async () => {
+    try {
+        logLine('BOOT', `App ready. Mode: ${isServiceMode ? 'SERVICE' : 'UI'}. Args: ${JSON.stringify(process.argv)}`);
+        if (isServiceMode) {
+            const envHandshake = process.env.SVC_HANDSHAKE;
+            if (envHandshake) {
+                const h = safeJsonParse(envHandshake);
+                if (h && h.authToken && h.pipeName) {
+                    serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0;
+                    await logLine('SVC', `Handshake successful from ENV. Pipe: ${servicePipeName}`);
+                    if (!(await acquireServiceLease())) {
+                        await logLine('SVC_ERROR', 'Failed to acquire service lease. Exiting.');
+                        app.exit(0);
+                    } else {
+                        await startServiceWatchdog();
+                    }
+                    return;
+                }
+            }
+
+            logLine('SVC', 'Service mode active, waiting for handshake on stdin...');
+            const handshakeTimeout = setTimeout(() => {
+                logLine('SVC_ERROR', 'Handshake timeout reached. No data on stdin or ENV. Exiting.');
+                app.exit(1);
+            }, 30000);
+            let hBuf = '';
+            process.stdin.resume(); process.stdin.setEncoding('utf8');
+            process.stdin.on('data', async d => {
+                logLine('SVC_DEBUG', `Received data on stdin: ${clipString(d.toString(), 100)}`);
+                hBuf += d.toString();
+                while (hBuf.includes('\n')) {
+                    const parts = hBuf.split('\n'); const line = parts[0].trim(); hBuf = parts.slice(1).join('\n'); 
+                    if (!line) continue;
+                    const h = safeJsonParse(line);
+                    if (h && h.authToken && h.pipeName) { 
+                        clearTimeout(handshakeTimeout);
+                        serviceAuthToken = h.authToken; servicePipeName = h.pipeName; serviceOwnerPid = h.ownerPid || 0; 
+                        await logLine('SVC', `Handshake successful from STDIN. Pipe: ${servicePipeName}`); 
+                        if (!(await acquireServiceLease())) {
+                            await logLine('SVC_ERROR', 'Failed to acquire service lease. Exiting.');
+                            app.exit(0); 
+                        } else {
+                            await startServiceWatchdog(); 
+                        }
+                    } else {
+                        await logLine('SVC_ERROR', `Invalid handshake payload: ${clipString(line, 200)}`);
+                    }
+                }
+            });
+        } else {
+            await logLine('UI', 'Starting UI mode...'); createTray(); createWindow(); spawnService(true); scheduleUiReconnect(1200);
+            await checkOutlookStatus(); outlookStatusInterval = setInterval(checkOutlookStatus, 10000);
+        }
+    } catch (e) { await logLine('BOOT_ERROR', e.stack || e.message); }
 });
-ipcMain.handle('check-power-status', async () => { return new Promise((resolve) => { execFile('powercfg', ['/query', 'SCHEME_CURRENT', 'SUB_SLEEP', 'STANDBYIDLE'], { windowsHide: true }, (error, stdout) => { if (error) return resolve({ safe: true }); resolve({ safe: !stdout.includes('Current AC Power Setting Index: 0x00000000') === false }); }); }); });
-ipcMain.on('override-power-plan', () => { logLine('USER_ACTION', 'Override power plan'); execFile('powercfg', ['/change', 'standby-timeout-ac', '0'], { windowsHide: true }); execFile('powercfg', ['/change', 'hibernate-timeout-ac', '0'], { windowsHide: true }); });
+
+function destroyUiPipeClient() { if (uiPipeClient) { const c = uiPipeClient; uiPipeClient = null; try { c.removeAllListeners(); c.destroy(); } catch {} } }
+
+ipcMain.handle('get-stats', async () => { await forceReloadStore(); return store.get('stats'); });
+ipcMain.handle('get-config', async () => { await forceReloadStore(); return { enabled: !!store.get('enabled'), historyScanEnabled: !!store.get('historyScanEnabled'), vtApiKey: decryptKey(store.get('vtApiKey')), spamKeywords: store.get('spamKeywords'), rubrics: store.get('rubrics'), whitelist: store.get('whitelist'), columnWidths: store.get('columnWidths'), schedule: store.get('schedule') }; });
+ipcMain.handle('set-enabled', async (e, v) => { if (typeof v !== 'boolean') return { ok: false }; const ok = await safeStoreSet('enabled', v); if (!ok) return { ok: false }; sendCommandToService(v ? (store.get('historyScanEnabled') ? 'FullScan' : 'OnAccess') : 'Stop'); await checkOutlookStatus(); return { ok: true }; });
+ipcMain.handle('set-history-enabled', async (e, v) => { if (typeof v !== 'boolean') return { ok: false }; const ok = await safeStoreSet('historyScanEnabled', v); if (!ok) return { ok: false }; await logLine('CONFIG', `History Scan: ${v ? 'ON' : 'OFF'}`); sendCommandToService(v ? 'FullScan' : (store.get('enabled') ? 'OnAccess' : 'Stop')); return { ok: true }; });
+ipcMain.handle('set-vt-key', async (e, k) => { const n = clipString(String(k || ''), 256); return await safeStoreSet('vtApiKey', encryptKey(n)) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-spam-keywords', async (e, k) => { return await safeStoreSet('spamKeywords', Array.isArray(k) ? k.map(v => clipString(v, 80)).filter(Boolean) : []) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-rubrics', async (e, r) => { return await safeStoreSet('rubrics', r) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-whitelist', async (e, w) => { return await safeStoreSet('whitelist', w) ? { ok: true } : { ok: false }; });
+ipcMain.handle('set-schedule', async (e, s) => { return await safeStoreSet('schedule', s) ? { ok: true } : { ok: false }; });
+ipcMain.handle('save-column-widths', async (e, w) => { return await safeStoreSet('columnWidths', w) ? { ok: true } : { ok: false }; });
+ipcMain.handle('open-logs-folder', async () => { const r = await shell.openPath(LOG_DIR); return r ? { ok: false } : { ok: true }; });
+ipcMain.handle('clear-security-cache', async () => { if (await safeStoreSet('processedIds', [])) await logLine('SVC', 'Cache cleared'); return { ok: true }; });
+ipcMain.handle('app-reset', async () => { store.clear(); app.relaunch(); await shutdown(0); return { ok: true }; });
+ipcMain.handle('backup-config', async () => { await forceReloadStore(); const c = store.store; const d = await dialog.showSaveDialog(mainWindow, { title: 'Export', defaultPath: path.join(app.getPath('downloads'), 'config.json') }); if (!d.filePath) return false; await fsPromises.writeFile(d.filePath, JSON.stringify(c, null, 2), 'utf8'); return true; });
+ipcMain.handle('restore-config', async () => { const d = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] }); if (!d.filePaths[0]) return false; try { const data = safeJsonParse(await fsPromises.readFile(d.filePaths[0], 'utf8')); if (data) { await safeStoreMerge(data); app.relaunch(); await shutdown(0); return true; } } catch {} return false; });
+ipcMain.handle('release-email', async (e, d) => {
+    if (d.whitelistEntry) {
+        const wl = store.get('whitelist') || { emails: [], ips: [], domains: [], combos: [] };
+        if (d.whitelistEntry.type === 'email' && !wl.emails.includes(d.whitelistEntry.value)) wl.emails.push(d.whitelistEntry.value);
+        if (d.whitelistEntry.type === 'ip' && !wl.ips.includes(d.whitelistEntry.value)) wl.ips.push(d.whitelistEntry.value);
+        if (d.whitelistEntry.type === 'domain' && !wl.domains.includes(d.whitelistEntry.value)) wl.domains.push(d.whitelistEntry.value);
+        if (d.whitelistEntry.type === 'combo' && !wl.combos.includes(d.whitelistEntry.value)) wl.combos.push(d.whitelistEntry.value);
+        await safeStoreSet('whitelist', wl);
+    }
+
+    const ps = path.join(APP_ROOT, 'outlook-scanner.ps1');
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', ps, '-Mode', 'Release'], { windowsHide: true });
+    
+    const finalToken = isServiceMode ? serviceAuthToken : (serviceSession ? serviceSession.token : '');
+    child.stdin.write(JSON.stringify({ authToken: finalToken, targetEntryId: d.entryId, originalFolder: d.originalFolder || '' }) + '\n'); 
+    child.stdin.end();
+
+    let lastResult = { ok: false, message: 'Process terminated unexpectedly' };
+    
+    child.stdout.on('data', data => {
+        const lines = data.toString().split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const p = safeJsonParse(trimmed);
+            if (!p) continue;
+            
+            if (p.type === 'release-progress') {
+                const logMsg = `[RELEASE] Item ${p.entryId.substring(0,8)}: ${p.status} - ${p.message}`;
+                logLine('RELEASE', logMsg);
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('live-log', logMsg);
+                    if (p.status === 'Finished' || p.status === 'Error') {
+                        mainWindow.webContents.send('email-released', { ok: p.ok, entryId: p.entryId, message: p.message });
+                    }
+                }
+            }
+        }
+    });
+
+    child.on('close', (code) => {
+        logLine('RELEASE', `Release process for ${d.entryId} exited with code ${code}`);
+    });
+
+    return { ok: true };
+});
+ipcMain.handle('check-power-status', async () => ({ safe: true }));
+ipcMain.handle('override-power-plan', async () => { const r = await execFileAsync('powercfg', ['/change', 'standby-timeout-ac', '0'], { windowsHide: true }); return { ok: !r.error }; });
+function encryptKey(k) { try { return safeStorage.encryptString(k).toString('base64'); } catch { return ''; } }
+function decryptKey(e) { try { return safeStorage.decryptString(Buffer.from(e, 'base64')); } catch { return ''; } }

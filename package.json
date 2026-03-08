@@ -4,11 +4,16 @@
   "description": "Professional Forensic Security Hub for Outlook",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "electron . --disable-gpu --disable-software-rasterizer --disable-gpu-compositing --disable-gpu-sandbox --disable-accelerated-2d-canvas --in-process-gpu --disable-gpu-process --use-gl=swiftshader --log-level=3",
     "package": "electron-packager . MICROSOFT_OUTLOOK_SECURITY_CENTER --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.png",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["security", "outlook", "forensics", "spam"],
+  "keywords": [
+    "security",
+    "outlook",
+    "forensics",
+    "spam"
+  ],
   "author": "Alon Reich",
   "license": "ISC",
   "type": "commonjs",
@@ -17,6 +22,6 @@
     "electron-packager": "^17.1.2"
   },
   "dependencies": {
-    "electron-store": "^11.0.2"
+    "electron-store": "^8.2.0"
   }
 }
