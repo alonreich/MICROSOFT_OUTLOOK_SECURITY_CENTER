@@ -5,169 +5,154 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MICROSOFT OUTLOOK SECURITY CENTER</title>
   <style>
-    :root {
-      --bg: #0a0e1c; --card: rgba(255, 255, 255, 0.04); --border: rgba(255, 255, 255, 0.12); --text: #f4f5fa; --muted: #a0a6cc; --ok: #8af7a8; --warn: #ffb454; --danger: #ff6161; --accent: #8e75ff;
-      --col-subject: 2fr; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-action: 150px; --col-reasoning: 1fr;
-    }
-    body { background: radial-gradient(circle at top left, #12182e, #0a0e1c); color: var(--text); font-family: "Segoe UI", sans-serif; padding: 20px; margin: 0; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; gap: 15px; }
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-    .title-area { display: flex; align-items: center; gap: 12px; }
-    .lock-icon { width: 24px; height: 24px; fill: var(--ok); }
-    .title { font-weight: 800; font-size: 1.2rem; letter-spacing: 1px; }
-    .controls { display: flex; gap: 10px; align-items: center; }
-    .status-btn { padding: 5px 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; font-size: 0.65rem; text-transform: uppercase; }
-    .status-btn.on { background: var(--ok); color: #000; }
-    .status-btn.off { background: var(--danger); color: white; }
-    .btn-secondary { background: rgba(255, 255, 255, 0.12); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.2); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.65rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
-    .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-1px); }
-    .btn-secondary.active { background: var(--accent); border-color: var(--accent); }
-    .btn-destructive { background: transparent; color: #666; border: 1px solid #333; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.65rem; font-weight: 600; transition: all 0.3s; }
-    .btn-destructive:hover { background: #800000; color: white; border-color: var(--danger); }
-    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; cursor: pointer; }
+    :root { --bg: #0a0e1c; --card: #161b2d; --border: #2d334a; --text: #e1e4e8; --muted: #8b949e; --accent: #8e75ff; --danger: #ff6161; --warn: #ffb86c; --ok: #50fa7b; --metallic: linear-gradient(180deg, #3d445d 0%, #2d334a 100%); }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+    .header { padding: 15px 25px; background: rgba(22, 27, 45, 0.8); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
+    .logo { font-weight: 900; letter-spacing: 2px; font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 12px; }
+    .logo span { color: var(--accent); }
+    .status-badge { padding: 6px 15px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.1); }
+    .status-btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 800; font-size: 0.75rem; transition: all 0.2s; background: var(--metallic); color: #fff; border: 1px solid var(--border); }
+    .status-btn.on { background: var(--ok); color: #000; border-color: #40c060; }
+    .status-btn.off { background: var(--danger); color: #fff; border-color: #d04040; }
+    .main-grid { display: grid; grid-template-columns: 300px 1fr; flex: 1; overflow: hidden; }
+    .sidebar { background: #0d111d; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; }
     .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
-    .stat-card.active { background: rgba(142, 117, 255, 0.1); border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.2); }
-    .stat-val { font-size: 1.5rem; font-weight: 800; margin-bottom: 3px; }
-    .stat-label { font-size: 0.6rem; text-transform: uppercase; color: var(--muted); }
-    .main-content { display: grid; grid-template-columns: 1fr 350px; gap: 15px; flex: 1; min-height: 0; }
-    .list-section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
-    .list-header-row { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); gap: 0; padding: 0; background: rgba(255,255,255,0.05); font-size: 0.6rem; font-weight: bold; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
-    .header-cell { padding: 10px 12px; position: relative; border-right: 1px solid rgba(255,255,255,0.05); overflow: hidden; text-align: center; }
-    .resizer { position: absolute; right: 0; top: 0; width: 4px; height: 100%; cursor: col-resize; user-select: none; }
-    .resizer:hover { background: var(--accent); }
-    .list-items { flex: 1; overflow-y: auto; }
-    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); gap: 0; padding: 0; border-bottom: 1px solid var(--border); font-size: 0.68rem; cursor: pointer; align-items: center; white-space: nowrap; }
-    .list-item > div { padding: 8px 12px; border-right: 1px solid rgba(255,255,255,0.03); overflow: hidden; text-overflow: ellipsis; text-align: center; }
-    .list-item:hover { background: rgba(255,255,255,0.05); }
-    .list-item.selected { background: rgba(142, 117, 255, 0.15) !important; border-left: 3px solid var(--accent); }
-    .log-section { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: "Cascadia Code", monospace; font-size: 0.58rem; overflow-y: auto; color: #d1d5db; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(3px); }
-    .modal-content { background: radial-gradient(circle at top left, #161c36, #0a0e1c); padding: 20px; border-radius: 12px; border: 1px solid var(--accent); width: 900px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; box-shadow: 0 15px 40px rgba(0,0,0,0.6); }
-    .modal-header { font-weight: bold; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
-    .detail-grid { display: grid; grid-template-columns: 110px 1fr; gap: 8px; font-size: 0.85rem; line-height: 1.5; }
-    .detail-label { color: var(--muted); font-weight: bold; }
-    .setting-group { background: rgba(255, 255, 255, 0.06); padding: 15px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 3px 15px rgba(0,0,0,0.3); }
-    .setting-group label { color: #ffffff; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; text-shadow: 0 1px 2px rgba(0,0,0,0.5); text-align: center; }
-    .header-area { background: rgba(0,0,0,0.5); border: 1px solid var(--accent); border-radius: 6px; padding: 12px; font-family: "Cascadia Code", monospace; font-size: 0.68rem; white-space: pre-wrap; overflow-wrap: break-word; max-height: 250px; overflow-y: auto; color: #8af7a8; }
-    input, textarea, select { background: #000; color: #fff; border: 1px solid rgba(142, 117, 255, 0.6); padding: 8px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 0.72rem; transition: all 0.2s; }
-    input:focus, textarea:focus { border-color: var(--accent); outline: none; background: #050505; box-shadow: 0 0 10px rgba(142, 117, 255, 0.3); }
-    .context-menu { display: none; position: absolute; background: #1c1c24; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 25px rgba(0,0,0,0.5); z-index: 1000; }
-    .context-menu-item { padding: 10px 15px; font-size: 0.75rem; color: #fff; cursor: pointer; }
-    .context-menu-item:hover { background: var(--accent); }
-    .btn-apply { background: linear-gradient(180deg, #1b4d3e 0%, #0d2b22 100%); color: #8af7a8; border: 1px solid #2d7a5d; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); width: 160px !important; min-width: 160px !important; max-width: 160px !important; height: 45px !important; font-size: 0.85rem !important; font-weight: 800 !important; cursor: pointer; border-radius: 8px; display: flex; justify-content: center; align-items: center; transition: all 0.2s; text-transform: uppercase; }
-    .btn-apply:hover { background: linear-gradient(180deg, #246351 0%, #123d2f 100%); transform: translateY(-1px); }
-    .btn-cancel-metallic { background: linear-gradient(180deg, #4d1b1b 0%, #2b0d0d 100%); color: #ff8a8a; border: 1px solid #7a2d2d; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); width: 160px !important; min-width: 160px !important; max-width: 160px !important; height: 45px !important; font-size: 0.7rem !important; font-weight: 800 !important; cursor: pointer; border-radius: 8px; display: flex; justify-content: center; align-items: center; transition: all 0.2s; text-transform: uppercase; }
-    .btn-cancel-metallic:hover { background: linear-gradient(180deg, #632424 0%, #3d1212 100%); transform: translateY(-1px); }
-    .custom-tooltip { display: none; position: fixed; background: #1c1c24; color: #fff; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; z-index: 2000; width: 350px; box-shadow: 0 10px 40px rgba(0,0,0,0.7); pointer-events: none; line-height: 1.5; }
+    .stat-card.active { border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.2); }
+    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 5px; }
+    .stat-label { font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
+    .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); padding: 12px 20px; background: rgba(0,0,0,0.2); font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .table-list { flex: 1; overflow-y: auto; }
+    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02); cursor: pointer; align-items: center; }
+    .list-item:hover { background: rgba(142, 117, 255, 0.05); }
+    .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
+    .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px; }
+    .log-area { background: #05070a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.7rem; overflow-y: auto; color: #88c0d0; }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
+    .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 800px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 30px rgba(142, 117, 255, 0.3); }
+    .modal-header { font-weight: 900; font-size: 1.2rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .detail-grid { display: grid; grid-template-columns: 150px 1fr; gap: 10px; margin-bottom: 20px; }
+    .detail-label { font-weight: 800; color: var(--muted); font-size: 0.7rem; text-transform: uppercase; }
+    .header-area { flex: 1; background: #0d111d; border: 1px solid var(--border); padding: 15px; font-family: monospace; font-size: 0.7rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #a3be8c; border-radius: 8px; }
+    .btn-secondary { background: var(--metallic); border: 1px solid var(--border); color: var(--text); padding: 8px 15px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-apply { background: var(--accent); color: #fff; border: none; padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 15px rgba(142, 117, 255, 0.3); }
+    .btn-cancel-metallic { background: #2d334a; color: var(--muted); border: 1px solid var(--border); padding: 10px 30px; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.8rem; }
+    .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 2000; overflow: hidden; }
+    .context-menu-item { padding: 10px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); transition: background 0.2s; }
+    .context-menu-item:hover { background: var(--accent); color: #fff; }
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); letter-spacing: 1px; }
+    .setting-group { margin-bottom: 20px; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 10px; border: 1px solid var(--border); }
+    .setting-group label { display: block; font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+    .setting-group input[type="text"], .setting-group textarea { width: 100%; background: #05070a; border: 1px solid var(--border); border-radius: 6px; padding: 10px; color: var(--text); font-family: inherit; font-size: 0.8rem; }
+    .setting-group input:focus, .setting-group textarea:focus { outline: none; border-color: var(--accent); }
+    #tooltip { position: fixed; background: #1c2135; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; color: #fff; width: 350px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 3000; pointer-events: none; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   </style>
 </head>
 <body>
-  <div id="tooltip" class="custom-tooltip"></div>
-  <div class="header">
-    <div class="title-area">
-      <button id="reset-btn" class="btn-destructive" title="Hard Wipe Everything" style="margin-right: 15px;">RESET APP</button>
-      <svg class="lock-icon" viewBox="0 0 24 24"><path d="M18,8H17V6A5,5 0 0,0 12,1A5,5 0 0,0 7,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8M9,6A3,3 0 0,1 12,3A3,3 0 0,1 15,6V8H9V6M18,20H6V10H18V20M12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17Z" /></svg>
-      <div class="title">MICROSOFT OUTLOOK SECURITY CENTER</div>
+  <div id="tooltip"></div>
+  <header class="header">
+    <div class="logo">
+        <svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
+        MICROSOFT OUTLOOK <span>SECURITY CENTER</span>
     </div>
-    <div class="controls">
-        <button id="scanner-toggle" class="status-btn on">Turned On</button>
-        <button id="history-toggle" class="btn-secondary">HISTORY SCAN</button>
-        <button id="schedule-btn" class="btn-secondary">SCHEDULE</button>
-        <button id="show-logs-btn" class="btn-secondary">LOGS</button>
-        <button id="sensitivity-btn" class="btn-secondary" style="background: linear-gradient(180deg, #4d3e1b 0%, #2b220d 100%); border-color: #7a632d; color: #ffb454;">SPAM ALGORITHM SENSITIVITY</button>
+    <div style="display:flex; gap:20px; align-items:center;">
+        <button id="history-toggle" class="btn-secondary" title="Enable full historical scan instead of just real-time">PERFORM HISTORY SCAN</button>
+        <button id="sensitivity-btn" class="btn-secondary">ANTI-SPAM ENGINES</button>
+        <button id="schedule-btn" class="btn-secondary">AUDIT SCHEDULER</button>
         <button id="settings-btn" class="btn-secondary">
-            <svg style="width:12px; height:12px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.5 15.47,5.19 14.86,4.97L14.47,2.33C14.44,2.1 14.22,1.92 14,1.92H10C9.78,1.92 9.56,2.1 9.53,2.33L9.14,4.97C8.53,5.19 7.96,5.5 7.44,5.9L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,12.33 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,18.1C7.96,18.5 8.53,18.81 9.14,19.03L9.53,21.67C9.56,21.9 9.78,22.08 10,22.08H14C14.22,22.08 14.44,21.9 14.47,21.67L14.86,19.03C15.47,18.81 16.04,18.5 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
-            <span style="margin: 0 4px;">SETTINGS</span>
+            <svg style="width:16px; height:16px; fill:currentColor" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.47,5.34 14.86,5.08L14.47,2.44C14.43,2.21 14.23,2 14,2H10C13.77,2 13.57,2.21 13.53,2.44L13.14,5.08C12.53,5.34 11.96,5.66 11.44,6.05L8.95,5.05C8.73,4.96 8.46,5.05 8.34,5.27L6.34,8.73C6.22,8.95 6.27,9.22 6.46,9.37L8.57,11.03C8.53,11.35 8.5,11.67 8.5,12C8.5,12.33 8.53,12.65 8.57,12.97L6.46,14.63C6.27,14.78 6.22,15.05 6.34,15.27L8.34,18.73C8.46,18.95 8.73,19.04 8.95,18.95L11.44,17.95C11.96,18.34 12.53,18.66 13.14,18.92L13.53,21.56C13.57,21.79 13.77,22 14,22H10C14.23,22 14.43,21.79 14.47,21.56L14.86,18.92C15.47,18.66 16.04,18.34 16.56,17.95L19.05,18.95C19.27,19.04 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+            SETTINGS
         </button>
+        <button id="scanner-toggle" class="status-btn off">Turned Off</button>
     </div>
-  </div>
-  <div class="stats-grid">
-    <div class="stat-card" id="card-malicious" style="border-bottom: 3px solid var(--danger);"><div class="stat-val" id="count-malicious" style="color: var(--danger)">0</div><div class="stat-label">Malicious</div></div>
-    <div class="stat-card" id="card-suspicious" style="border-bottom: 3px solid var(--warn);"><div class="stat-val" id="count-suspicious" style="color: var(--warn)">0</div><div class="stat-label">Suspicious</div></div>
-    <div class="stat-card" id="card-spam" style="border-bottom: 3px solid #8e75ff;"><div class="stat-val" id="count-spam" style="color: #8e75ff">0</div><div class="stat-label">Spam</div></div>
-    <div class="stat-card" id="card-safe" style="border-bottom: 3px solid var(--ok);"><div class="stat-val" id="count-safe" style="color: var(--ok)">0</div><div class="stat-label">Safe</div></div>
-  </div>
-  <div class="main-content">
-    <div class="list-section">
-        <div class="list-header-row" id="lhr">
-            <div class="header-cell" data-col="subject">Subject<div class="resizer"></div></div>
-            <div class="header-cell" data-col="date">Date<div class="resizer"></div></div>
-            <div class="header-cell" data-col="time">Time<div class="resizer"></div></div>
-            <div class="header-cell" data-col="ip">IP Address<div class="resizer"></div></div>
-            <div class="header-cell" data-col="verdict">Verdict<div class="resizer"></div></div>
-            <div class="header-cell" data-col="action">Action<div class="resizer"></div></div>
-            <div class="header-cell" data-col="reasoning">Reasoning<div class="resizer"></div></div>
+  </header>
+  <div class="main-grid">
+    <aside class="sidebar">
+        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size:0.6rem; color:var(--muted)">Deleted Items Isolation</div></div>
+        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size:0.6rem; color:var(--muted)">Flagged / Manual Audit</div></div>
+        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size:0.6rem; color:var(--muted)">Junk Folder Quarantine</div></div>
+        <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div><div style="font-size:0.6rem; color:var(--muted)">Inbox / Authorized Senders</div></div>
+        <div style="flex:1"></div>
+        <button id="show-logs-btn" class="btn-secondary" style="width:100%; justify-content:center;">OPEN DEBUG LOGS</button>
+        <button id="reset-btn" class="btn-secondary" style="width:100%; justify-content:center; color:var(--danger); border-color: rgba(255,97,97,0.3);">RESET APP</button>
+    </aside>
+    <main class="content">
+        <div class="table-container">
+            <div class="table-header"><div>Subject</div><div>Date</div><div>Time</div><div>IP Address</div><div>Verdict</div><div>Action</div><div>Forensics</div></div>
+            <div id="threat-list" class="table-list"></div>
         </div>
-        <div class="list-items" id="threat-list"></div>
-    </div>
-    <div class="log-section" id="log-container"></div>
-  </div>
-  <div id="details-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span>Email Forensic Details</span>
-            <span id="close-details-x" style="cursor: pointer; color: #ff6161; font-weight: bold; font-size: 1.5rem; line-height: 1;">&times;</span>
-        </div>
-        <div class="detail-grid" id="detail-view"></div>
-        <div class="detail-label" style="margin-top:12px; margin-bottom:4px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
-            Full RFC 822 Headers:
-            <span id="copy-headers-icon" title="Click here to copy the entire header of the email" style="cursor: pointer; display: flex; align-items: center;">
-                <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
-            </span>
-        </div>
-        <div class="header-area" id="header-text"></div>
-        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 45px;">
-            <button id="read-email-btn" class="btn-secondary" style="background:var(--accent); padding: 10px 25px; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px;">✉️ Read Email Content ✉️</button>
-            <button id="close-details-btn" class="btn-secondary" style="background: #800000; border-color: #a00000; position: absolute; right: 0; padding: 10px 20px; font-weight: 800;">Close Window</button>
-        </div>
-    </div>
-  </div>
-  <div id="body-modal" class="modal">
-    <div class="modal-content" style="width: 80%; max-width: 1000px; height: 80vh;">
-        <div class="modal-header">
-            <span id="body-subject">Email Content</span>
-            <button id="close-body-btn" class="btn-secondary">Close</button>
-        </div>
-        <div id="body-text" class="header-area" style="flex: 1; max-height: none; font-family: 'Segoe UI', sans-serif; font-size: 0.9rem; color: #fff; background: rgba(0,0,0,0.3);"></div>
-    </div>
+        <div id="log-container" class="log-area"></div>
+    </main>
   </div>
   <div id="settings-modal" class="modal">
-    <div class="modal-content" style="width: 750px; height: 85vh; max-height: 850px;">
-        <div class="modal-header" style="justify-content: center; font-size: 1.1rem;">SECURITY CENTER CONFIGURATION</div>
-        <div style="flex: 1; overflow-y: auto; padding-right: 12px; display: flex; flex-direction: column; gap: 20px;">
+    <div class="modal-content" style="width: 900px;">
+        <div class="modal-header" style="justify-content: center;">FORENSIC SECURITY CONFIGURATION</div>
+        <div style="display: flex; flex-direction: column; gap: 20px; overflow-y: auto;">
             <div class="setting-group">
-                <div class="detail-label" style="font-size: 0.85rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">API & ENGINE</div>
-                <div style="display:grid; grid-template-columns: 1fr 120px; gap:15px; align-items: end;">
-                    <div style="text-align: center;">
-                        <label>VirusTotal Forensic API Key</label>
-                        <input type="password" id="vt-api-key" placeholder="Enter VT Key">
-                    </div>
-                    <div style="text-align: center;">
-                        <label title="Controls the threshold for Spam/Suspicious scoring. Default: 5" style="cursor: help; text-decoration: underline dotted;">Heuristic Threshold</label>
-                        <input type="number" id="spam-threshold" min="1" max="20" step="1">
-                    </div>
-                </div>
-                <div style="text-align: center; margin-top: 12px;">
-                    <label>Spam Engine Keywords</label>
-                    <textarea id="spam-keywords" style="height:60px; font-family: inherit; font-size: 0.72rem;" placeholder="viagra&#10;lottery"></textarea>
-                </div>
+                <label>VirusTotal Professional API Key (Optional)</label>
+                <input type="text" id="vt-api-key" placeholder="Enter key for multi-engine cloud verification">
+            </div>
+            <div class="setting-group">
+                <label>Custom Spam Heuristic Keywords (One per line)</label>
+                <textarea id="spam-keywords" style="height:80px;" placeholder="urgent, lottery, win, prize..."></textarea>
+            </div>
+            <div class="setting-group">
+                <label>Global Spam Score Threshold (1-100)</label>
+                <input type="text" id="spam-threshold" style="width: 80px; text-align: center;">
             </div>
             <div class="setting-group">
                 <div class="detail-label" style="font-size: 0.85rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">FORENSIC WHITELISTS</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div style="text-align: center;">
                         <label>Authorized Emails</label>
-                        <textarea id="wl-emails" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="ceo@company.com"></textarea>
+                        <textarea id="wl-emails" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="ceo@company.com"></textarea>
                     </div>
                     <div style="text-align: center;">
-                        <label>Authorized IP Addresses</label>
-                        <textarea id="wl-ips" style="height:80px; font-family: inherit; font-size: 0.68rem;" placeholder="192.168.1.100"></textarea>
+                        <label>Authorized IPs</label>
+                        <textarea id="wl-ips" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="192.168.1.100"></textarea>
+                    </div>
+                    <div style="text-align: center;">
+                        <label>Authorized Domains</label>
+                        <textarea id="wl-domains" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="trusted.com"></textarea>
+                    </div>
+                    <div style="text-align: center;">
+                        <label>Authorized combinations</label>
+                        <textarea id="wl-combos" style="height:60px; font-family: inherit; font-size: 0.68rem;" placeholder="1.2.3.4|trusted.com"></textarea>
                     </div>
                 </div>
             </div>
             <div class="setting-group">
-                <div class="detail-label" style="font-size: 0.85rem; color: var(--ok); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">APP CONFIGURATION</div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                <div class="detail-label" style="font-size: 0.85rem; color: var(--danger); border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 12px; text-align: center;">FORENSIC BLACKLISTS</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div style="text-align: center;">
+                        <label>Blocked Emails</label>
+                        <textarea id="bl-emails" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="spammer@bad.com"></textarea>
+                    </div>
+                    <div style="text-align: center;">
+                        <label>Blocked IPs</label>
+                        <textarea id="bl-ips" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="66.66.66.66"></textarea>
+                    </div>
+                    <div style="text-align: center;">
+                        <label>Blocked Domains</label>
+                        <textarea id="bl-domains" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="evil-scam.net"></textarea>
+                    </div>
+                    <div style="text-align: center;">
+                        <label>Blocked combinations</label>
+                        <textarea id="bl-combos" style="height:60px; font-family: inherit; font-size: 0.68rem; border-color: var(--danger);" placeholder="9.9.9.9|scam.org"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="setting-group">
+                <label>System Maintenance</label>
+                <div style="display:flex; gap:10px;">
                     <button id="backup-btn" class="btn-secondary" style="justify-content:center; padding:10px;">BACKUP CONFIGURATION</button>
                     <button id="restore-btn" class="btn-secondary" style="justify-content:center; padding:10px;">RESTORE CONFIGURATION</button>
                 </div>
@@ -181,7 +166,7 @@
   </div>
   <div id="sensitivity-modal" class="modal">
     <div class="modal-content" style="width: 600px;">
-        <div class="modal-header" style="justify-content: center;">SPAM ALGORITHM SENSITIVITY</div>
+        <div class="modal-header" style="justify-content: center;">ANTI-SPAM ENGINES</div>
         <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 15px; padding: 10px;"></div>
         <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px;">
             <button id="save-sensitivity" class="btn-apply">APPLY WEIGHTS</button>
@@ -222,6 +207,35 @@
         </div>
     </div>
   </div>
+  <div id="details-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span>Email Forensic Details</span>
+            <span id="close-details-x" style="cursor: pointer; color: #ff6161; font-weight: bold; font-size: 1.5rem; line-height: 1;">&times;</span>
+        </div>
+        <div class="detail-grid" id="detail-view"></div>
+        <div class="detail-label" style="margin-top:12px; margin-bottom:4px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
+            Full RFC 822 Headers:
+            <span id="copy-headers-icon" title="Click here to copy the entire header of the email" style="cursor: pointer; display: flex; align-items: center;">
+                <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
+            </span>
+        </div>
+        <div class="header-area" id="header-text"></div>
+        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 45px;">
+            <button id="read-email-btn" class="btn-secondary" style="background:var(--accent); padding: 10px 25px; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px;">✉️ Read Email Content ✉️</button>
+            <button id="close-details-btn" class="btn-secondary" style="background: #800000; border-color: #a00000; position: absolute; right: 0; padding: 10px 20px; font-weight: 800;">Close Window</button>
+        </div>
+    </div>
+  </div>
+  <div id="body-modal" class="modal">
+    <div class="modal-content" style="width: 90%; height: 90vh;">
+        <div class="modal-header">
+            <span id="body-subject">Email Content</span>
+            <button id="close-body-btn" class="btn-cancel-metallic" style="padding:5px 15px;">X</button>
+        </div>
+        <div id="body-text" class="header-area" style="color: #fff; font-family: inherit; font-size: 0.9rem; line-height: 1.6;"></div>
+    </div>
+  </div>
   <div id="ctx-menu" class="context-menu">
     <div class="context-menu-item" id="rel-email">Release & Whitelist: Email Address Only</div>
     <div class="context-menu-item" id="rel-ip">Release & Whitelist: IP Address Only</div>
@@ -234,12 +248,19 @@
     const detModal = document.getElementById('details-modal');
     const logContainer = document.getElementById('log-container');
     const tooltipEl = document.getElementById('tooltip');
+    const toastEl = document.getElementById('toast');
+
+    function showToast() {
+        toastEl.style.display = 'block';
+        setTimeout(() => { toastEl.style.display = 'none'; }, 2000);
+    }
+
     let stats = { malicious: [], suspicious: [], spam: [], safe: [] };
     let selectedIds = new Set();
     let lastSelectedIndex = -1;
     let lastRenderedJson = "";
     let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', action: '150px', reasoning: '1fr' };
-    let currentWeights = { dmarc: 30, alignment: 20, dkim: 10, spf: 10, rdns: 10, body: 10, heuristics: 10 };
+    let currentWeights = { dmarc: 22, alignment: 30, dkim: 5, spf: 20, rdns: 8, body: 8, heuristics: 7 };
     let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true };
     let tooltipTimer = null;
 
@@ -247,13 +268,13 @@
         const container = document.getElementById('sensitivity-container');
         const labels = { dmarc: 'DMARC Compliance', alignment: 'Sender Alignment', dkim: 'DKIM Integrity', spf: 'SPF Authorization', rdns: 'Reverse DNS (PTR)', body: 'Body/Payload Entropy', heuristics: 'Heuristic Hooks' };
         const tips = {
-            dmarc: "DMARC (THE OFFICIAL SEAL): This checks if the email sender follows strict security rules. It's like checking if a letter has an official company seal. TURN THIS OFF IF: You stop getting emails from small offices or people using older systems that haven't set up these modern rules yet.",
-            alignment: "ALIGNMENT (NAME MATCH): This checks if the name on the envelope matches the name on the letter inside. It stops hackers from pretending to be your boss. TURN THIS OFF IF: You use email newsletters or group chats where one person sends a message through a different big system.",
-            dkim: "DKIM (THE DIGITAL STAMP): This looks for a secret digital stamp that proves the email wasn't changed by a hacker after it was sent. TURN THIS OFF IF: You work with very old companies whose computers don't know how to add these stamps yet.",
-            spf: "SPF (THE APPROVED TRUCK): This checks if the email was sent from a computer that is officially allowed to send it. It's like making sure a delivery driver is using the company truck. TURN THIS OFF IF: You use a service that forwards your emails, as this can make them look like they are coming from the wrong computer.",
-            rdns: "REVERSE DNS (THE ID CARD): This checks if the sender's computer has a proper 'internet ID card.' Real businesses always have one. TURN THIS OFF IF: You talk to people using home computers or tiny private servers that don't have professional internet IDs.",
-            body: "BODY SCAN (THE CODE DETECTOR): This scans for hidden code or sneaky tricks that hackers use to hide bad links inside normal text. TURN THIS OFF IF: Your job involves receiving actual computer code, technical data, or lots of math formulas, which can look like hacker tricks.",
-            heuristics: "WORD SCAN (THE SCAM FINDER): This looks for common scam words like 'Free Money,' 'Win a Prize,' or 'Urgent Login.' TURN THIS OFF IF: Your actual job is in banking, contests, or security where you expect to see these kinds of urgent words every day."
+            dmarc: "DMARC checks sender rules.",
+            alignment: "Alignment checks envelope vs body.",
+            dkim: "DKIM checks digital stamps.",
+            spf: "SPF checks authorized trucks.",
+            rdns: "RDNS checks internet ID cards.",
+            body: "Body entropy scans for hidden code.",
+            heuristics: "Heuristics scans for scam words."
         };
         container.innerHTML = Object.keys(currentWeights).map(key => {
             const val = currentWeights[key]; const isEnabled = currentToggles[key];
@@ -296,12 +317,10 @@
         const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; 
         const items = (stats[cat] || []).slice(-100).reverse();
         const currentDataJson = JSON.stringify(items);
-        
         if (currentDataJson === lastRenderedJson) {
             document.querySelectorAll('.list-item').forEach(el => el.classList.toggle('selected', selectedIds.has(el.dataset.id)));
             return;
         }
-        
         lastRenderedJson = currentDataJson;
         list.innerHTML = items.map((i, idx) => {
             const [d, t] = i.date.split(' ');
@@ -344,32 +363,84 @@
                 const i = itemData;
                 if (!i) return;
                 const [d, t] = i.date.split(' ');
-                
                 const engines = (i.tier || 'None').split(',').map(s => s.trim()).filter(Boolean);
                 const engineHtml = engines.length ? engines.map(eng => `<span style="background: rgba(142, 117, 255, 0.2); color: var(--accent); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; margin-right: 5px; display: inline-block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 0 8px rgba(142, 117, 255, 0.3);">[ ${eng} ]</span>`).join('') : '<span style="color:var(--muted)">None Detected</span>';
+
+                const copySvg = `<svg style="width:12px; height:12px; fill:var(--accent); cursor:pointer;" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>`;
 
                 document.getElementById('detail-view').innerHTML = `
                     <div class="detail-label">Email Subject:</div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-weight: 800; color: #fff;">${escapeHTML(i.subject)}</span>
-                        <span id="copy-subject-precision" title="Copy exact subject with quotes" style="cursor: pointer; display: flex; align-items: center;">
-                            <svg style="width:14px; height:14px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg>
-                        </span>
+                        <span id="copy-subject" title="Copy Subject">${copySvg}</span>
                     </div>
-                    <div class="detail-label">Spam Score:</div><div style="color:var(--accent); font-weight: 800;">${i.score || 0}</div>
-                    <div class="detail-label">Received:</div><div>${escapeHTML(d)} at ${escapeHTML(t)}</div>
-                    <div class="detail-label">Sender:</div><div style="color: var(--ok); font-family: monospace;">${escapeHTML(i.sender || 'Unknown')}</div>
-                    <div class="detail-label">Verdict:</div><div style="font-weight: 800; text-transform: uppercase;">${cat}</div>
-                    <div class="detail-label">Action:</div><div>${escapeHTML(i.action || 'None')}</div>
-                    <div class="detail-label">Detected Engines:</div><div style="line-height: 1.8;">${engineHtml}</div>
-                    <div class="detail-label">Original:</div><div style="font-size: 0.7rem; color: var(--muted);">${escapeHTML(i.originalFolder || 'Unknown')}</div>
-                    <div class="detail-label">IP Address:</div><div style="color: var(--warn); font-family: monospace;">${escapeHTML(i.ip || 'N/A')}</div>`;
-                
-                document.getElementById('copy-subject-precision').onclick = (e) => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(`"${i.subject}"`);
-                    addLog(`Precision Copy: Subject captured with quotes.`);
+                    <div class="detail-label">Spam Score:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color:var(--accent); font-weight: 800;">${i.score || 0}</span>
+                        <span id="copy-score" title="Copy Score">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Received:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span>${escapeHTML(d)} at ${escapeHTML(t)}</span>
+                        <span id="copy-received" title="Copy Timestamp">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Sender (From):</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: var(--ok); font-family: monospace;">${escapeHTML(i.sender || 'Unknown')}</span>
+                        <span id="copy-from" title="Copy Sender">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Recipient (To):</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #fff; font-family: monospace; font-size: 0.75rem;">${escapeHTML(i.to || 'N/A')}</span>
+                        <span id="copy-to" title="Copy Recipient">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Carbon Copy (CC):</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #fff; font-family: monospace; font-size: 0.75rem;">${escapeHTML(i.cc || 'N/A')}</span>
+                        <span id="copy-cc" title="Copy CC">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Verdict:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 800; text-transform: uppercase;">${cat}</span>
+                        <span id="copy-verdict" title="Copy Verdict">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Action:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span>${escapeHTML(i.action || 'None')}</span>
+                        <span id="copy-action" title="Copy Action">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Detected Engines:</div>
+                    <div style="display: flex; align-items: center; gap: 10px; line-height: 1.8;">
+                        <div>${engineHtml}</div>
+                        <span id="copy-engines" title="Copy Engines" style="margin-left: 5px;">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">Original Folder:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.7rem; color: var(--muted);">${escapeHTML(i.originalFolder || 'Unknown')}</span>
+                        <span id="copy-folder" title="Copy Folder ID">${copySvg}</span>
+                    </div>
+                    <div class="detail-label">IP Address:</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: var(--warn); font-family: monospace;">${escapeHTML(i.ip || 'N/A')}</span>
+                        <span id="copy-ip" title="Copy IP Address">${copySvg}</span>
+                    </div>`;
+
+                const setCopy = (id, val) => { 
+                    const el = document.getElementById(id);
+                    if (el) el.onclick = (e) => { e.stopPropagation(); navigator.clipboard.writeText(`"${val}"`); addLog(`Forensic Copy: ${id.replace('copy-','')} captured.`); showToast(); };
                 };
+
+                setCopy('copy-subject', i.subject);
+                setCopy('copy-score', i.score);
+                setCopy('copy-received', `${d} ${t}`);
+                setCopy('copy-from', i.sender);
+                setCopy('copy-to', i.to || 'N/A');
+                setCopy('copy-cc', i.cc || 'N/A');
+                setCopy('copy-verdict', cat);
+                setCopy('copy-action', i.action);
+                setCopy('copy-engines', i.tier || 'None');
+                setCopy('copy-folder', i.originalFolder);
+                setCopy('copy-ip', i.ip || 'N/A');
 
                 document.getElementById('header-text').textContent = i.fullHeaders || "No header information available.";
                 detModal.style.display = 'flex';
@@ -383,12 +454,16 @@
                     lastSelectedIndex = itemIdx;
                     document.querySelectorAll('.list-item').forEach(item => item.classList.toggle('selected', selectedIds.has(item.dataset.id)));
                 }
-                if (cat !== 'safe') {
-                    const menu = document.getElementById('ctx-menu');
-                    menu.style.display = 'block';
-                    menu.style.left = e.pageX + 'px';
-                    menu.style.top = e.pageY + 'px';
-                }
+                const menu = document.getElementById('ctx-menu');
+                const isSafe = (cat === 'safe');
+                const prefix = isSafe ? 'Mark As Spam: ' : 'Release & Whitelist: ';
+                document.getElementById('rel-email').textContent = prefix + 'Email Address Only';
+                document.getElementById('rel-ip').textContent = prefix + 'IP Address Only';
+                document.getElementById('rel-domain').textContent = prefix + 'Domain Only';
+                document.getElementById('rel-combo').textContent = prefix + 'IP Address and Domain Combination';
+                menu.style.display = 'block';
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
             };
         });
     }
@@ -447,55 +522,106 @@
     document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
     document.getElementById('close-details-btn').onclick = () => detModal.style.display = 'none';
     document.getElementById('close-details-x').onclick = () => detModal.style.display = 'none';
-    document.getElementById('settings-btn').onclick = async () => { const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey; document.getElementById('spam-keywords').value = cfg.spamKeywords.join('\n'); document.getElementById('spam-threshold').value = cfg.rubrics?.threshold || 5; document.getElementById('settings-modal').style.display = 'flex'; };
+    document.getElementById('settings-btn').onclick = async () => { 
+        const cfg = await api.getConfig(); 
+        document.getElementById('vt-api-key').value = cfg.vtApiKey; 
+        document.getElementById('spam-keywords').value = cfg.spamKeywords.join('\n'); 
+        document.getElementById('spam-threshold').value = cfg.rubrics?.threshold || 5; 
+        document.getElementById('wl-emails').value = (cfg.whitelist?.emails || []).join('\n');
+        document.getElementById('wl-ips').value = (cfg.whitelist?.ips || []).join('\n');
+        document.getElementById('wl-domains').value = (cfg.whitelist?.domains || []).join('\n');
+        document.getElementById('wl-combos').value = (cfg.whitelist?.combos || []).join('\n');
+        document.getElementById('bl-emails').value = (cfg.blacklist?.emails || []).join('\n');
+        document.getElementById('bl-ips').value = (cfg.blacklist?.ips || []).join('\n');
+        document.getElementById('bl-domains').value = (cfg.blacklist?.domains || []).join('\n');
+        document.getElementById('bl-combos').value = (cfg.blacklist?.combos || []).join('\n');
+        document.getElementById('settings-modal').style.display = 'flex'; 
+    };
     document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display='none';
-    document.getElementById('save-settings').onclick = async () => { const cfg = await api.getConfig(); const wl = { emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v), ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v), domains: [], combos: [] }; api.setVTKey(document.getElementById('vt-api-key').value); api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k)); api.setRubrics({ ...cfg.rubrics, threshold: parseInt(document.getElementById('spam-threshold').value) }); api.setWhitelist(wl); document.getElementById('settings-modal').style.display='none'; addLog("Settings updated."); };
+    document.getElementById('save-settings').onclick = async () => { 
+        const wl = { 
+            emails: document.getElementById('wl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v), 
+            ips: document.getElementById('wl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v), 
+            domains: document.getElementById('wl-domains').value.split('\n').map(v=>v.trim()).filter(v=>v), 
+            combos: document.getElementById('wl-combos').value.split('\n').map(v=>v.trim()).filter(v=>v) 
+        }; 
+        const bl = {
+            emails: document.getElementById('bl-emails').value.split('\n').map(v=>v.trim()).filter(v=>v),
+            ips: document.getElementById('bl-ips').value.split('\n').map(v=>v.trim()).filter(v=>v),
+            domains: document.getElementById('bl-domains').value.split('\n').map(v=>v.trim()).filter(v=>v),
+            combos: document.getElementById('bl-combos').value.split('\n').map(v=>v.trim()).filter(v=>v)
+        };
+        api.setVTKey(document.getElementById('vt-api-key').value); 
+        api.setSpamKeywords(document.getElementById('spam-keywords').value.split('\n').map(k=>k.trim()).filter(k=>k)); 
+        const cfg = await api.getConfig();
+        api.setRubrics({ ...cfg.rubrics, threshold: parseInt(document.getElementById('spam-threshold').value) }); 
+        api.setWhitelist(wl); 
+        api.setBlacklist(bl);
+        document.getElementById('settings-modal').style.display='none'; 
+        addLog("Settings updated."); 
+    };
     document.getElementById('backup-btn').onclick = async () => { if (await api.backupConfig()) addLog("Backup completed."); };
     document.getElementById('restore-btn').onclick = async () => { if (await api.restoreConfig()) addLog("App restarting..."); };
     document.getElementById('reset-btn').onclick = () => document.getElementById('reset-modal').style.display = 'flex';
     document.getElementById('cancel-reset').onclick = () => document.getElementById('reset-modal').style.display = 'none';
     document.getElementById('confirm-reset').onclick = () => api.resetApp();
     
-    async function handleRelease(type) {
+    async function handleContextMenuAction(type) {
+        const activeCat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
         const items = getSelectedItems();
         if (!items.length) return;
-        addLog(`Initiating bulk release for ${items.length} items...`);
-        for (const i of items) {
-            let wlEntry = null;
-            if (type === 'email') wlEntry = { type: 'email', value: i.sender };
-            else if (type === 'ip') wlEntry = { type: 'ip', value: i.ip };
-            else if (type === 'domain') wlEntry = { type: 'domain', value: i.domain };
-            else if (type === 'combo') wlEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
-            
-            api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder });
+        if (activeCat === 'safe') {
+            addLog(`Marking ${items.length} items as SPAM...`);
+            for (const i of items) {
+                let blEntry = null;
+                if (type === 'email') blEntry = { type: 'email', value: i.sender };
+                else if (type === 'ip') blEntry = { type: 'ip', value: i.ip };
+                else if (type === 'domain') blEntry = { type: 'domain', value: i.domain };
+                else if (type === 'combo') blEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
+                api.quarantineEmail({ entryId: i.entryId, blacklistEntry: blEntry });
+            }
+        } else {
+            addLog(`Initiating bulk release for ${items.length} items...`);
+            for (const i of items) {
+                let wlEntry = null;
+                if (type === 'email') wlEntry = { type: 'email', value: i.sender };
+                else if (type === 'ip') wlEntry = { type: 'ip', value: i.ip };
+                else if (type === 'domain') wlEntry = { type: 'domain', value: i.domain };
+                else if (type === 'combo') wlEntry = { type: 'combo', value: `${i.ip}|${i.domain}` };
+                api.releaseEmail({ entryId: i.entryId, whitelistEntry: wlEntry, originalFolder: i.originalFolder, unread: i.unread });
+                if (wlEntry) {
+                    const toCascade = [];
+                    ['malicious', 'suspicious', 'spam'].forEach(cat => {
+                        (stats[cat] || []).forEach(other => {
+                            if (other.entryId === i.entryId) return;
+                            let match = false;
+                            if (type === 'email' && other.sender === wlEntry.value) match = true;
+                            else if (type === 'ip' && other.ip === wlEntry.value) match = true;
+                            else if (type === 'domain' && other.domain === wlEntry.value) match = true;
+                            else if (type === 'combo' && `${other.ip}|${other.domain}` === wlEntry.value) match = true;
+                            if (match) toCascade.push({ ...other, cat });
+                        });
+                    });
+                    if (toCascade.length > 0) {
+                        addLog(`CASCADE: Automatically releasing ${toCascade.length} matching items...`);
+                        toCascade.forEach(c => { api.releaseEmail({ entryId: c.entryId, whitelistEntry: null, originalFolder: c.originalFolder, unread: c.unread }); });
+                    }
+                }
+            }
         }
     }
-
-    document.getElementById('rel-email').onclick = () => handleRelease('email');
-    document.getElementById('rel-ip').onclick = () => handleRelease('ip');
-    document.getElementById('rel-domain').onclick = () => handleRelease('domain');
-    document.getElementById('rel-combo').onclick = () => handleRelease('combo');
-
+    document.getElementById('rel-email').onclick = () => handleContextMenuAction('email');
+    document.getElementById('rel-ip').onclick = () => handleContextMenuAction('ip');
+    document.getElementById('rel-domain').onclick = () => handleContextMenuAction('domain');
+    document.getElementById('rel-combo').onclick = () => handleContextMenuAction('combo');
     function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
-    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { 
-        document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); 
-        c.classList.add('active'); 
-        selectedIds.clear();
-        lastSelectedIndex = -1;
-        renderList(); 
-    });
+    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); selectedIds.clear(); lastSelectedIndex = -1; renderList(); });
     document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
     function updateToggleUi(en) { const b = document.getElementById('scanner-toggle'); if(b) { b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } }
     api.onOutlookScanUpdate((data) => addLog(`${data.status}: ${data.details}`));
     api.onLiveLog((msg) => addLog(msg));
     api.onStatusSync(updateToggleUi);
-    api.onEmailReleased((data) => {
-        if (data && data.ok) {
-            addLog(`SUCCESS: Item ${data.entryId.substring(0,8)}... restored.`);
-        } else if (data) {
-            addLog(`FAILURE: ${data.message || 'Unknown error during release'}`);
-        }
-    });
+    api.onEmailReleased((data) => { if (data && data.ok) { addLog(`SUCCESS: Item ${data.entryId.substring(0,8)}... restored.`); } else if (data) { addLog(`FAILURE: ${data.message || 'Unknown error during release'}`); } });
     api.onStatsUpdate((data) => { if (data && data.full) updateDashboard(data.stats); else if (data && data.delta) { ['malicious','suspicious','spam','safe'].forEach(c => { if (data.stats[c]) stats[c].push(...data.stats[c]); }); updateDashboard(stats); } });
     async function init() { const cfg = await api.getConfig(); updateToggleUi(cfg.enabled); if (cfg.historyScanEnabled) { document.getElementById('history-toggle').classList.add('active'); } if (cfg.columnWidths) { colWidths = cfg.columnWidths; applyColWidths(); } updateDashboard(await api.getStats()); }
     init();

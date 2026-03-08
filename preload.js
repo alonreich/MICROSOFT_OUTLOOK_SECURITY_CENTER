@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('securityApi', {
     setSpamKeywords: value => invoke('set-spam-keywords', value),
     setRubrics: value => invoke('set-rubrics', value),
     setWhitelist: value => invoke('set-whitelist', value),
+    setBlacklist: value => invoke('set-blacklist', value),
     setSchedule: value => invoke('set-schedule', value),
     saveColumnWidths: value => invoke('save-column-widths', value),
     openLogsFolder: () => invoke('open-logs-folder'),
@@ -32,5 +33,6 @@ contextBridge.exposeInMainWorld('securityApi', {
     onStatusSync: callback => ipcRenderer.on('status-sync', (event, value) => callback(value)),
     onStatsUpdate: callback => ipcRenderer.on('stats-update', (event, data) => callback(data)),
     onLiveLog: callback => ipcRenderer.on('live-log', (event, message) => callback(message)),
-    onEmailReleased: callback => ipcRenderer.on('email-released', (event, data) => callback(data))
+    onEmailReleased: callback => ipcRenderer.on('email-released', (event, data) => callback(data)),
+    quarantineEmail: (data) => invoke('quarantine-email', data)
 });
