@@ -5,414 +5,247 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MICROSOFT OUTLOOK SECURITY CENTER</title>
   <style>
-    :root { --bg: #0a0e1c; --card: #161b2d; --border: #2d334a; --text: #e1e4e8; --muted: #8b949e; --accent: #8e75ff; --danger: #ff6161; --warn: #ffb86c; --ok: #50fa7b; --metallic: linear-gradient(180deg, #3d445d 0%, #2d334a 100%); }
+    :root { --bg: #2b314d; --card: #363d5c; --border: #4a5278; --text: #e1e4e8; --muted: #a0a8c0; --accent: #9d85ff; --danger: #ff6e6e; --warn: #ffc382; --ok: #64ff8e; --metallic: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); --col-subject: 280px; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-score: 80px; --col-action: 150px; --col-reasoning: 300px; }
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-    
-    .header { padding: 15px 25px; background: rgba(22, 27, 45, 0.8); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
-    .logo { font-weight: 900; letter-spacing: 2px; font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 12px; }
+    body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+    .header { padding: 15px 25px; background: rgba(54, 61, 92, 0.9); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
+    .logo { font-weight: 700; letter-spacing: 1px; font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 12px; }
     .logo span { color: var(--accent); }
-    
-    .status-btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 800; font-size: 0.75rem; transition: all 0.2s; background: var(--metallic); color: #fff; border: 1px solid var(--border); min-width: 120px; }
-    .status-btn.on { background: var(--ok); color: #000; border-color: #40c060; }
-    .status-btn.off { background: var(--danger); color: #fff; border-color: #d04040; }
-    
-    .main-grid { display: grid; grid-template-columns: 300px 1fr; flex: 1; overflow: hidden; }
-    .sidebar { background: #0d111d; border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-    
-    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 100px; justify-content: center; }
-    .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); background: rgba(142, 117, 255, 0.05); }
-    .stat-card.active { border-color: var(--accent); box-shadow: 0 0 15px rgba(142, 117, 255, 0.2); background: rgba(142, 117, 255, 0.1); }
-    .stat-val { font-size: 1.8rem; font-weight: 900; margin-bottom: 2px; width: 100%; }
-    .stat-label { font-size: 0.65rem; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 1px; width: 100%; margin-bottom: 4px; }
-    .stat-desc { font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8; }
-    
+    .status-btn { padding: 8px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-weight: 700; font-size: 0.75rem; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); color: #fff; border-bottom: 2px solid #141829; min-width: 110px; position: relative; top: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .status-btn:hover { top: -1px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); border-bottom-width: 3px; border-color: var(--accent); }
+    .status-btn:active { top: 1px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); border-bottom-width: 1px; }
+    .status-btn.on { background: linear-gradient(180deg, #64ff8e 0%, #40c060 100%); color: #000; border-color: #40c060; border-bottom-color: #206030; }
+    .status-btn.off { background: linear-gradient(180deg, #ff6e6e 0%, #d04040 100%); color: #fff; border-color: #d04040; border-bottom-color: #602020; }
+    .main-grid { display: grid; grid-template-columns: 220px 1fr; flex: 1; overflow: hidden; }
+    .sidebar { background: #303756; border-right: 1px solid var(--border); padding: 15px; display: flex; flex-direction: column; gap: 20px; }
+    .stat-card { background: linear-gradient(180deg, #3d4466 0%, #2b314d 100%); border: 1px solid rgba(255,255,255,0.05); border-bottom: 2px solid #141829; border-radius: 10px; padding: 15px; cursor: pointer; transition: all 0.1s ease-out; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 105px; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3); position: relative; top: 0; }
+    .stat-card:hover { top: -1px; box-shadow: 0 6px 12px rgba(0,0,0,0.4); border-color: var(--accent); }
+    .stat-card.active, .stat-card:active { top: 2px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); border-bottom-width: 1px; background: #1e233a; }
+    .stat-val { font-size: 1.8rem; font-weight: 700; margin-bottom: 2px; width: 100%; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+    .stat-label { font-size: 0.75rem; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; width: 100%; margin-bottom: 4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
     .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
-    .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-    
-    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; background: rgba(0,0,0,0.3); font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
-    .table-list { flex: 1; overflow-y: auto; }
-    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; align-items: center; }
+    .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow-y: hidden; overflow-x: auto; display: flex; flex-direction: column; }
+    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 0 20px; background: rgba(0,0,0,0.3); font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); height: 40px; align-items: center; position: relative; width: max-content; min-width: 100%; }
+    .table-header > div { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid rgba(255,255,255,0.05); text-align: center; }
+    .resizer { position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: col-resize; z-index: 10; }
+    .resizer:hover { background: var(--accent); opacity: 0.5; }
+    .table-list { flex: 1; overflow-y: auto; width: max-content; min-width: 100%; }
+    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; align-items: center; width: max-content; min-width: 100%; }
     .list-item:hover { background: rgba(142, 117, 255, 0.05); }
     .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
-    .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px; }
-    
-    .log-area { background: #05070a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.7rem; overflow-y: auto; color: #88c0d0; line-height: 1.4; }
-    
+    .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; text-align: center; }
+    .log-area { background: #1e243a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; }
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
     .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 850px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
-    .modal-header { font-weight: 900; font-size: 1.1rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); text-align: center; color: #fff; letter-spacing: 1px; }
-    
-    .btn-ui { background: var(--metallic); border: 1px solid var(--border); color: var(--text); padding: 0 20px; height: 40px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; min-width: fit-content; }
-    .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; }
-    .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); }
-    .modal-content .btn-ui { min-width: 180px; }
-    .btn-ui.danger:hover { border-color: var(--danger); background: rgba(255, 97, 97, 0.1); color: var(--danger); }
-    .btn-ui.success:hover { border-color: var(--ok); background: var(--ok); color: #000; }
-    
-    .btn-step { background: var(--metallic); border: 1px solid var(--border); color: var(--text); width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 900; display: flex; align-items: center; justify-content: center; }
-    .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
-    
+    .modal-header { font-weight: 700; font-size: 1.1rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); text-align: center; color: #fff; letter-spacing: 1px; }
+    .btn-ui { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 0 15px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.1s; min-width: fit-content; position: relative; top: 0; border-bottom: 2px solid #141829; }
+    .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; top: -1px; border-bottom-width: 3px; }
+    .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); top: 1px; border-bottom-width: 1px; }
+    .btn-ui:active { top: 1px; border-bottom-width: 1px; }
+    .btn-step { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); width: auto; min-width: 16px; height: 16px; border-radius: 3px; cursor: pointer; font-size: 0.4rem; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; top: 0; border-bottom: 1px solid #141829; transition: all 0.1s; padding: 0 4px; }
+    .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); top: -1px; border-bottom-width: 2px; }
+    .btn-step:active:not(:disabled) { top: 1px; border-bottom-width: 1px; }
+    .btn-step:disabled { opacity: 0.3; cursor: not-allowed; }
     .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; z-index: 2000; overflow: hidden; min-width: 250px; }
     .context-menu-item { padding: 12px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.05); }
     .context-menu-item:hover { background: var(--accent); color: #fff; }
-    
-    .setting-group { margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
-    .setting-group label { display: block; font-size: 0.6rem; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
-    .setting-group input, .setting-group textarea { width: 100%; background: #05070a; border: 1px solid var(--border); border-radius: 4px; padding: 8px; color: #fff; font-family: inherit; font-size: 0.8rem; }
-    .setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    
     #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
     #tooltip { position: fixed; background: #1c2135; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; color: #fff; width: 350px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 3000; pointer-events: none; }
-    
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+    @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(142, 117, 255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0); } }
+    .pulse { animation: pulse 2s infinite; }
   </style>
 </head>
 <body>
   <div id="toast">COPIED TO CLIPBOARD</div>
   <div id="tooltip"></div>
-  
   <header class="header">
-    <div class="logo">
-        <svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
-        MICROSOFT OUTLOOK <span>SECURITY CENTER</span>
-    </div>
+    <div class="logo"><svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg> MICROSOFT OUTLOOK <span>SECURITY CENTER</span></div>
     <div style="display:flex; gap:15px; align-items:center;">
-        <button id="history-toggle" class="btn-ui">PERFORM HISTORY SCAN</button>
-        <button id="sensitivity-btn" class="btn-ui">ANTI-SPAM ENGINES</button>
+        <div id="scan-status-indicator" style="display:none; align-items:center; gap:8px; background: rgba(142, 117, 255, 0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(142, 117, 255, 0.3);">
+            <div id="scan-status-dot" style="width:10px; height:10px; border-radius:50%; background:var(--accent);"></div>
+            <span id="scan-status-text" style="font-size:0.65rem; font-weight:900; color:var(--accent);">INITIALIZING...</span>
+        </div>
+        <div id="outlook-indicator" style="display:flex; align-items:center; gap:8px; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);">
+            <div id="outlook-dot" style="width:10px; height:10px; border-radius:50%; background:var(--danger);"></div>
+            <span id="outlook-text" style="font-size:0.65rem; font-weight:900; color:var(--muted);">OUTLOOK: DISCONNECTED</span>
+        </div>
+        <button id="history-toggle" class="btn-ui">HISTORY SCAN</button>
+        <button id="sensitivity-btn" class="btn-ui">ENGINES</button>
         <button id="settings-btn" class="btn-ui">SETTINGS</button>
         <button id="scanner-toggle" class="status-btn off">Turned Off</button>
     </div>
   </header>
-
   <div class="main-grid">
     <aside class="sidebar">
-        <div id="card-malicious" class="stat-card active">
-            <div class="stat-label">Malicious</div>
-            <div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div>
-            <div class="stat-desc">Critical Threats Blocked</div>
-        </div>
-        <div id="card-suspicious" class="stat-card">
-            <div class="stat-label">Suspicious</div>
-            <div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div>
-            <div class="stat-desc">Flagged for Review</div>
-        </div>
-        <div id="card-spam" class="stat-card">
-            <div class="stat-label">Spam</div>
-            <div id="count-spam" class="stat-val" style="color:#8e75ff">0</div>
-            <div class="stat-desc">Quarantined to Junk</div>
-        </div>
-        <div id="card-safe" class="stat-card">
-            <div class="stat-label">Safe</div>
-            <div id="count-safe" class="stat-val" style="color:var(--ok)">0</div>
-            <div class="stat-desc">Inbox / Trusted Senders</div>
-        </div>
+        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div></div>
+        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div></div>
+        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div></div>
+        <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div></div>
         <div style="flex:1"></div>
         <button id="show-logs-btn" class="btn-ui" style="width:100%; justify-content:center;">OPEN LOGS</button>
         <button id="reset-btn" class="btn-ui danger" style="width:100%; justify-content:center;">RESET APP</button>
     </aside>
-    
     <main class="content">
         <div class="table-container">
-            <div class="table-header">
-                <div>Subject</div><div>Date</div><div>Time</div><div>IP Address</div><div>Verdict</div><div>Score</div><div>Action</div><div>Reasoning</div>
-            </div>
+            <div class="table-header" id="main-header"><div data-col="subject">Subject<div class="resizer"></div></div><div data-col="date">Date<div class="resizer"></div></div><div data-col="time">Time<div class="resizer"></div></div><div data-col="ip">IP Address<div class="resizer"></div></div><div data-col="verdict">Verdict<div class="resizer"></div></div><div data-col="score">Score<div class="resizer"></div></div><div data-col="action">Action<div class="resizer"></div></div><div data-col="reasoning">Reasoning<div class="resizer"></div></div></div>
             <div id="threat-list" class="table-list"></div>
+            <div id="pagination-controls" style="padding: 5px; display: flex; justify-content: center; gap: 10px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2);">
+                <button id="pg-first" class="btn-step">FIRST</button>
+                <button id="pg-prev" class="btn-step">PREV</button>
+                <span id="pg-info" style="font-size:0.6rem; font-weight:bold; color:var(--muted); display:flex; align-items:center;">Page 1 of 1</span>
+                <button id="pg-next" class="btn-step">NEXT</button>
+                <button id="pg-last" class="btn-step">LAST</button>
+            </div>
         </div>
         <div id="log-container" class="log-area"></div>
     </main>
   </div>
-
   <div id="sensitivity-modal" class="modal">
     <div class="modal-content" style="width: 650px;">
         <div class="modal-header">ANTI-SPAM ENGINES</div>
         <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; padding: 10px; overflow-y: auto;"></div>
-        
         <div style="margin-top: 20px; padding: 15px; border-top: 2px solid var(--border); background: rgba(142, 117, 255, 0.05); border-radius: 10px;">
-            <div style="text-align: center; margin-bottom: 10px;">
-                <div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div>
-                <input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;">
-                <div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div>
-            </div>
-            <div style="text-align: center; margin-top: 10px;">
-                <span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span>
-                <div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div>
-            </div>
+            <div style="text-align: center; margin-bottom: 10px;"><div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div></div>
+            <div style="display: flex; align-items: center; gap: 15px;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div><input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div></div>
+            <div style="text-align: center; margin-top: 10px;"><span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span><div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div></div>
         </div>
-        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;">
-            <button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button>
-            <button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button>
-            <button id="close-sensitivity" class="btn-ui danger">CANCEL</button>
-        </div>
+        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;"><button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button><button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button><button id="close-sensitivity" class="btn-ui danger">CANCEL</button></div>
     </div>
   </div>
-
   <div id="settings-modal" class="modal">
     <div class="modal-content" style="width: 900px;">
         <div class="modal-header">SETTINGS</div>
         <div style="overflow-y: auto; flex: 1; padding-right: 10px;">
-            <div class="setting-group"><label>VirusTotal Enterprise API Key</label><input type="text" id="vt-api-key" placeholder="Enter your key here..."></div>
-            
-            <div class="setting-grid">
-                <div class="setting-group"><label>Trusted Emails</label><textarea id="wl-emails" style="height:80px;" placeholder="example@trust.com&#10;admin@company.net"></textarea></div>
-                <div class="setting-group"><label>Blocked Emails</label><textarea id="bl-emails" style="height:80px;" placeholder="scam@evil.com&#10;hacker@darkweb.org"></textarea></div>
-            </div>
-            <div class="setting-grid">
-                <div class="setting-group"><label>Trusted IPs</label><textarea id="wl-ips" style="height:80px;" placeholder="192.168.1.50&#10;10.0.0.1"></textarea></div>
-                <div class="setting-group"><label>Blocked IPs</label><textarea id="bl-ips" style="height:80px;" placeholder="45.12.33.10&#10;103.5.2.99"></textarea></div>
-            </div>
-            <div class="setting-grid">
-                <div class="setting-group"><label>Trusted Domains</label><textarea id="wl-domains" style="height:80px;" placeholder="microsoft.com&#10;office.com"></textarea></div>
-                <div class="setting-group"><label>Blocked Domains</label><textarea id="bl-domains" style="height:80px;" placeholder="fake-login.xyz&#10;urgent-update.net"></textarea></div>
-            </div>
-            <div class="setting-grid">
-                <div class="setting-group"><label>Trusted IP + Domain Combos</label><textarea id="wl-combos" style="height:80px;" placeholder="1.2.3.4|trusted.com&#10;5.6.7.8|safe.net"></textarea></div>
-                <div class="setting-group"><label>Blocked IP + Domain Combos</label><textarea id="bl-combos" style="height:80px;" placeholder="9.9.9.9|evil-scam.biz&#10;8.8.4.4|malware.ru"></textarea></div>
-            </div>
-
-            <div class="setting-group"><label>Global Spam Keywords (One per line)</label><textarea id="spam-keywords" style="height:150px;" placeholder="viagra&#10;bitcoin&#10;inheritance&#10;winner"></textarea></div>
+            <div class="setting-group"><label>VirusTotal Enterprise API Key</label><input type="text" id="vt-api-key" placeholder="Enter key..."></div>
+            <div class="setting-grid"><div class="setting-group"><label>Trusted Emails</label><textarea id="wl-emails" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked Emails</label><textarea id="bl-emails" style="height:80px;"></textarea></div></div>
+            <div class="setting-grid"><div class="setting-group"><label>Trusted IPs</label><textarea id="wl-ips" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked IPs</label><textarea id="bl-ips" style="height:80px;"></textarea></div></div>
+            <div class="setting-grid"><div class="setting-group"><label>Trusted Domains</label><textarea id="wl-domains" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked Domains</label><textarea id="bl-domains" style="height:80px;"></textarea></div></div>
+            <div class="setting-group"><label>Global Spam Keywords</label><textarea id="spam-keywords" style="height:100px;"></textarea></div>
         </div>
-        <div style="display:flex; justify-content: center; gap:15px; margin-top:20px;">
-            <button id="save-settings" class="btn-ui success">SAVE CONFIGURATION</button>
-            <button id="close-settings" class="btn-ui danger">CANCEL</button>
+        <div style="display:flex; justify-content: center; gap:15px; margin-top:20px;"><button id="save-settings" class="btn-ui success">SAVE</button><button id="close-settings" class="btn-ui danger">CANCEL</button></div>
+    </div>
+  </div>
+  <div id="forensic-modal" class="modal">
+    <div class="modal-content" style="width: 1200px; font-family: Arial, sans-serif; font-size: 11pt;">
+        <div class="modal-header">EMAIL FORENSIC DETAILS</div>
+        <div id="forensic-fields" style="display: flex; flex-direction: column; gap: 0; padding: 10px;"></div>
+        <div style="margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; padding-top: 20px; border-top: 1px solid var(--border);">
+            <button id="forensic-rfc" class="btn-ui">SHOW EMAIL HEADERS (RFC822)</button>
+            <button id="forensic-read" class="btn-ui"><svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg>&nbsp;&nbsp;READ EMAIL CONTENT&nbsp;&nbsp;<svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg></button>
+            <button id="forensic-prev" class="btn-ui">PREVIOUS <<</button><button id="forensic-next" class="btn-ui">NEXT >></button><button id="forensic-close" class="btn-ui danger">CLOSE</button>
         </div>
     </div>
   </div>
-
   <div id="ctx-menu" class="context-menu">
+    <div class="context-menu-item" id="ctx-copy" style="border-bottom: 1px solid var(--accent); color: var(--accent); display: none;">Copy Selection</div>
     <div class="context-menu-item" id="ctx-email">Mark based on Email</div>
     <div class="context-menu-item" id="ctx-ip">Mark based on IP</div>
     <div class="context-menu-item" id="ctx-domain">Mark based on Domain</div>
     <div class="context-menu-item" id="ctx-combo">Mark based on Combo</div>
   </div>
-
   <script>
     const api = window.securityApi;
-    const list = document.getElementById('threat-list');
-    const logContainer = document.getElementById('log-container');
-    const tooltipEl = document.getElementById('tooltip');
-
-    let stats = { malicious: [], suspicious: [], spam: [], safe: [] };
-    let selectedIds = new Set();
-    let pendingActions = new Set();
-    let currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 };
-    let currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true };
-    let currentSpamThreshold = 50;
-    let colWidths = { subject: '2fr', date: '100px', time: '80px', ip: '120px', verdict: '100px', score: '80px', action: '150px', reasoning: '1fr' };
-    let lastRenderedJson = "";
-    let tooltipTimer = null;
+    const list = document.getElementById('threat-list'), logContainer = document.getElementById('log-container'), tooltipEl = document.getElementById('tooltip');
+    let stats = { malicious: [], suspicious: [], spam: [], safe: [] }, selectedIds = new Set(), pendingActions = new Set(), isProtectionEnabled = false, currentWeights = {}, currentToggles = {}, currentSpamThreshold = 50, colWidths = {}, lastRenderedJson = "", currentForensicId = null;
+    let currentPage = 1, pageSize = 50, renderPending = false;
 
     function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-    function addLog(msg) { const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
+    function addLog(msg) { if (!msg) return; const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
     function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
-
+    
     function renderList() {
-        const activeCard = document.querySelector('.stat-card.active');
-        const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
-        const items = (stats[cat] || []).slice(-100).reverse();
-        const currentDataJson = JSON.stringify(items.map(i => i.entryId + selectedIds.has(i.entryId)));
-        if (currentDataJson === lastRenderedJson) return;
-        lastRenderedJson = currentDataJson;
-        if (items.length === 0) { list.innerHTML = `<div style="padding:40px; text-align:center; color:var(--muted); font-size:0.8rem; font-weight:800;">NO EMAILS DETECTED</div>`; return; }
-        list.innerHTML = items.map((i, idx) => {
-            const [d, t] = (i.date || " ").split(' ');
-            const vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff';
-            const isSelected = selectedIds.has(i.entryId);
-            return `<div class="list-item ${isSelected ? 'selected' : ''}" data-id="${i.entryId}">
-                <div title="${escapeHTML(i.subject)}">${escapeHTML(i.subject)}</div>
-                <div>${escapeHTML(d)}</div>
-                <div>${escapeHTML(t)}</div>
-                <div>${escapeHTML(i.ip || 'N/A')}</div>
-                <div style="color:${vColor}; font-weight:bold;">${cat.toUpperCase()}</div>
-                <div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score || 100)}%</div>
-                <div>${escapeHTML(i.action || 'None')}</div>
-                <div title="${escapeHTML(i.tier || '')}">${escapeHTML(i.tier || '')}</div>
-            </div>`;
-        }).join('');
-        document.querySelectorAll('.list-item').forEach(el => {
-            el.onclick = (e) => { const id = el.dataset.id; if (!e.ctrlKey) selectedIds.clear(); if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id); lastRenderedJson = ""; renderList(); };
-            el.oncontextmenu = (e) => { 
-                e.preventDefault(); 
-                if (!selectedIds.has(el.dataset.id)) { selectedIds.clear(); selectedIds.add(el.dataset.id); lastRenderedJson = ""; renderList(); } 
-                
-                const activeCard = document.querySelector('.stat-card.active');
-                const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
-                const prefix = cat === 'safe' ? 'Mark as SPAM' : 'Mark as SAFE';
-                
-                document.getElementById('ctx-email').textContent = `${prefix}: Sender Only`;
-                document.getElementById('ctx-ip').textContent = `${prefix}: IP Address Only`;
-                document.getElementById('ctx-domain').textContent = `${prefix}: Domain Only`;
-                document.getElementById('ctx-combo').textContent = `${prefix}: Domain & IP Address Combination`;
+        if (renderPending) return;
+        renderPending = true;
+        requestAnimationFrame(() => {
+            const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
+            const allItems = (stats[cat] || []).slice().reverse();
+            const totalPages = Math.max(1, Math.ceil(allItems.length / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const items = allItems.slice(start, start + pageSize);
+            
+            document.getElementById('pg-info').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('pg-first').disabled = currentPage === 1;
+            document.getElementById('pg-prev').disabled = currentPage === 1;
+            document.getElementById('pg-next').disabled = currentPage === totalPages;
+            document.getElementById('pg-last').disabled = currentPage === totalPages;
 
-                const menu = document.getElementById('ctx-menu'); 
-                menu.style.display = 'block'; 
-                menu.style.left = e.pageX + 'px'; 
-                menu.style.top = e.pageY + 'px'; 
-            };
+            const hash = JSON.stringify(items.map(i => i.entryId + (selectedIds.has(i.entryId) ? '_s' : '')));
+            if (hash !== lastRenderedJson) {
+                lastRenderedJson = hash;
+                if (allItems.length === 0) { list.innerHTML = `<div style="grid-column: 1 / -1; padding:40px; text-align:center; color:var(--muted); font-size:0.8rem; font-weight:800; width: 100%;">NO EMAILS DETECTED</div>`; }
+                else {
+                    list.innerHTML = items.map(i => {
+                        const ts = i.timestamp || "", [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""], vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff', sub = i.subject || i.details || "No Subject";
+                        return `<div class="list-item ${selectedIds.has(i.entryId)?'selected':''}" data-id="${escapeHTML(i.entryId)}"><div title="${escapeHTML(sub)}">${escapeHTML(sub)}</div><div>${escapeHTML(d)}</div><div>${escapeHTML(t)}</div><div>${escapeHTML(i.ip||'N/A')}</div><div style="color:${vColor}; font-weight:bold;">${cat.toUpperCase()}</div><div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score||100)}%</div><div>${escapeHTML(i.action||'None')}</div><div title="${escapeHTML(i.tier||'')}">${escapeHTML(i.tier||'')}</div></div>`;
+                    }).join('');
+                    document.querySelectorAll('.list-item').forEach(el => { 
+                        el.onclick = (e) => { 
+                            const id = el.dataset.id; 
+                            if (!e.ctrlKey) { document.querySelectorAll('.list-item').forEach(x => x.classList.remove('selected')); selectedIds.clear(); }
+                            if (selectedIds.has(id)) { selectedIds.delete(id); el.classList.remove('selected'); } else { selectedIds.add(id); el.classList.add('selected'); }
+                        }; 
+                        el.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showForensics(el.dataset.id); }; 
+                    });
+                }
+            }
+            renderPending = false;
         });
     }
 
-    function updateDashboard(data) { if (!data) return; for (const cat in data) { stats[cat] = data[cat].filter(i => !pendingActions.has(i.entryId)); } ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = stats[c].length; }); renderList(); }
+    function showForensics(id) {
+        currentForensicId = id; const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === id); const item = items[index]; if (!item) return;
+        const ts = item.timestamp || ""; const [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""], sub = item.subject || item.details || "No Subject";
+        const fields = [ { l: 'DATE', v: d }, { l: 'TIME', v: t }, { l: 'FROM', v: item.sender }, { l: 'TO', v: item.to || 'N/A' }, { l: 'CC', v: item.cc || 'N/A' }, { l: 'SUBJECT', v: sub }, { l: 'IP ADDRESS', v: item.ip || 'N/A' }, { l: 'VERDICT', v: cat.toUpperCase() }, { l: 'SCORE', v: Math.round(item.score || 0) + '%' }, { l: 'ACTION', v: item.action || 'None' }, { l: 'REASONING', v: item.tier || 'None' } ];
+        document.getElementById('forensic-fields').innerHTML = fields.map(f => `<div style="display:flex; align-items:center; gap:10px; padding-bottom:15px; margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.05); user-select: text !important; -webkit-user-select: text !important;"><span style="font-weight:bold; min-width:180px; color:var(--muted); font-size:0.75rem; text-transform:uppercase; text-align:right; padding-right:20px; user-select: text !important; -webkit-user-select: text !important; cursor: text;">${f.l}:</span><span style="flex:1; color:#fff; font-size:0.85rem; word-break:break-all; user-select: text !important; -webkit-user-select: text !important; cursor: text;">${escapeHTML(f.v)}</span><div style="width:16px; height:16px; fill:var(--accent); cursor:pointer; display:flex; align-items:center; justify-content:center; user-select: none;" onclick="copyToClipboard('${escapeHTML(f.v)}')"><svg viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg></div></div>`).join('');
+        document.getElementById('forensic-modal').style.display = 'flex';
+        document.getElementById('forensic-prev').disabled = index === 0;
+        document.getElementById('forensic-next').disabled = index === items.length - 1;
+    }
+
+    function updateDashboard(data) { if (!data) return; for (const cat in data) { if (stats.hasOwnProperty(cat)) { stats[cat] = (data[cat] || []).filter(i => !pendingActions.has(i.entryId)); } } ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = (stats[c] || []).length; }); renderList(); }
+    
+    window.copyToClipboard = (text) => { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const t = document.getElementById('toast'); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2000); };
     window.stepWeight = (key, delta) => { if (!currentToggles[key]) return; let newVal = currentWeights[key] + delta; if (newVal < 1) newVal = 1; if (newVal > 100) newVal = 100; rebalanceWeights(key, newVal); renderSensitivityUI(); };
     function rebalanceWeights(key, newVal) {
-        if (!currentToggles[key]) {
-            currentWeights[key] = 0;
-        } else {
-            const oldVal = currentWeights[key] || 0;
-            const diff = newVal - oldVal;
-            currentWeights[key] = newVal;
+        if (!currentToggles[key]) { currentWeights[key] = 0; } else {
+            const oldVal = currentWeights[key] || 0; const diff = newVal - oldVal; currentWeights[key] = newVal;
             const activeKeys = Object.keys(currentWeights).filter(k => k !== key && currentToggles[k]);
-            if (activeKeys.length > 0) {
-                let rem = diff;
-                activeKeys.forEach(k => {
-                    const share = Math.round(rem / activeKeys.length);
-                    currentWeights[k] -= share;
-                    rem -= share;
-                });
-                currentWeights[activeKeys[0]] -= rem;
-            }
+            if (activeKeys.length > 0) { let rem = diff; activeKeys.forEach(k => { const share = Math.round(rem / activeKeys.length); currentWeights[k] -= share; rem -= share; }); currentWeights[activeKeys[0]] -= rem; }
         }
-        
-        // Ensure active are >= 1, inactive are 0
-        Object.keys(currentWeights).forEach(k => {
-            if (!currentToggles[k]) currentWeights[k] = 0;
-            else if (currentWeights[k] < 1) currentWeights[k] = 1;
-        });
-
-        // Normalize sum to 100
-        let total = 0;
-        const activeKeys = Object.keys(currentWeights).filter(k => currentToggles[k]);
-        activeKeys.forEach(k => total += currentWeights[k]);
-        
-        if (total !== 100 && activeKeys.length > 0) {
-            const adjustKey = activeKeys.find(k => k !== key) || activeKeys[0];
-            currentWeights[adjustKey] += (100 - total);
-        }
+        Object.keys(currentWeights).forEach(k => { if (!currentToggles[k]) currentWeights[k] = 0; else if (currentWeights[k] < 1) currentWeights[k] = 1; });
+        let total = 0; const activeKeys = Object.keys(currentWeights).filter(k => currentToggles[k]); activeKeys.forEach(k => total += currentWeights[k]);
+        if (total !== 100 && activeKeys.length > 0) { const adjustKey = activeKeys.find(k => k !== key) || activeKeys[0]; currentWeights[adjustKey] += (100 - total); }
     }
-
     function renderSensitivityUI() {
         const container = document.getElementById('sensitivity-container');
-        const labels = { 
-            dmarc: 'DMARC AUTHENTICATION', 
-            alignment: 'SENDER ALIGNMENT', 
-            dkim: 'DKIM SIGNATURES', 
-            spf: 'SPF AUTHORIZATION', 
-            rdns: 'REVERSE DNS CHECK', 
-            body: 'BODY INTEGRITY', 
-            heuristics: 'SCAM KEYWORDS', 
-            rbl: 'GLOBAL BLACKLISTS' 
-        };
-        const tips = {
-            dmarc: "WHAT IT IS: A set of strict rules that prove the sender is really who they say they are. \n\nWHY USE IT: It's the strongest way to stop hackers from pretending to be your bank or boss. \n\nWHEN TO AVOID: If you send emails through a middle-man service that isn't set up perfectly, your own emails might get blocked.",
-            alignment: "WHAT IT IS: Checks if the name on the outside of the envelope matches the name on the actual letter inside. \n\nWHY USE IT: It stops 'imposters' who use a real-looking name but a fake email address. \n\nWHEN TO AVOID: If you use mailing lists or newsletters, they sometimes change these names and might look like a mistake.",
-            dkim: "WHAT IT IS: A digital 'wax seal' that proves the email was not changed by anyone after it was sent. \n\nWHY USE IT: It makes sure that links or files inside the email are exactly what the sender intended. \n\nWHEN TO AVOID: Only turn this off if you receive mail from very old systems that don't know how to 'seal' their emails.",
-            spf: "WHAT IT IS: A list of 'Approved Post Offices' that a company uses to send their mail. \n\nWHY USE IT: It's a basic test that catches many simple scams and fake emails. \n\nWHEN TO AVOID: If a company forgets to update their list, their real emails might look fake. But usually, you should keep this ON.",
-            rdns: "WHAT IT IS: Checks the 'Internet ID Card' of the computer that sent the mail to see if it's a real business or a hidden hacker bot. \n\nWHY USE IT: Most mass-spamming robots don't have a real ID card, so this blocks them instantly. \n\nWHEN TO AVOID: Some small or home-based businesses might not have a perfect ID card yet.",
-            body: "WHAT IT IS: Scans the email for 'hidden tricks' like invisible text or links that try to fool your eyes. \n\nWHY USE IT: It catches hackers who try to hide their bad links inside what looks like a normal message. \n\nWHEN TO AVOID: If you get a lot of very fancy, colorful shopping ads, they might sometimes look 'tricky' to this engine.",
-            heuristics: "WHAT IT IS: Looks for 'Red Flag' words that scammers love to use, like 'WINNER', 'BITCOIN', or 'URGENT'. \n\nWHY USE IT: It's great at catching classic 'Get Rich Quick' or 'You've Been Hacked' scams. \n\nWHEN TO AVOID: If your job involves money, law, or medicine, you might use these words normally, and this might flag them by mistake.",
-            rbl: "WHAT IT IS: A giant global 'Watch List' of known bad guys and spam servers. \n\nWHY USE IT: It's the fastest way to block millions of known spammers before they even reach you. \n\nWHEN TO AVOID: Almost never. This is one of the best tools for a clean inbox."
-        };
+        const labels = { dmarc: 'DMARC AUTHENTICATION', alignment: 'SENDER ALIGNMENT', dkim: 'DKIM SIGNATURES', spf: 'SPF AUTHORIZATION', rdns: 'REVERSE DNS CHECK', body: 'BODY INTEGRITY', heuristics: 'SCAM KEYWORDS', rbl: 'GLOBAL BLACKLISTS' };
         container.innerHTML = Object.keys(currentWeights).map(key => {
             const val = currentWeights[key]; const en = currentToggles[key];
-            return `<div class="sensitivity-row" data-tip="${escapeHTML(tips[key])}" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4}; cursor:help;">
-                <input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}>
-                <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div>
-                <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <button class="btn-step" onclick="stepWeight('${key}',-1)" ${en?'':'disabled'}>-</button>
-                    <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div>
-                    <button class="btn-step" onclick="stepWeight('${key}',1)" ${en?'':'disabled'}>+</button>
-                </div>
-            </div>`;
+            return `<div class="sensitivity-row" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4};"><input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}> <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div> <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;"> <div style="display:flex; align-items:center; gap:8px;"> <button class="btn-step" onclick="stepWeight('${key}',-1)" ${en?'':'disabled'}>-</button> <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div> <button class="btn-step" onclick="stepWeight('${key}',1)" ${en?'':'disabled'}>+</button> </div> </div>`;
         }).join('');
-        
-        document.querySelectorAll('.sensitivity-row').forEach(row => {
-            row.onmouseenter = (e) => {
-                const text = row.dataset.tip;
-                clearTimeout(tooltipTimer);
-                tooltipTimer = setTimeout(() => {
-                    tooltipEl.textContent = text; tooltipEl.style.display = 'block';
-                    const rect = row.getBoundingClientRect();
-                    tooltipEl.style.left = (rect.left - 370) + 'px'; tooltipEl.style.top = rect.top + 'px';
-                }, 1000);
-            };
-            row.onmouseleave = () => { clearTimeout(tooltipTimer); tooltipEl.style.display = 'none'; };
-        });
-        
-        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { 
-            const key = c.dataset.key;
-            const activeCount = Object.values(currentToggles).filter(v => v).length;
-            if (!c.checked && activeCount <= 1) { c.checked = true; return; }
-            currentToggles[key] = c.checked;
-            if (!c.checked) {
-                rebalanceWeights(key, 0);
-            } else {
-                const others = Object.keys(currentToggles).filter(k => k !== key && currentToggles[k]);
-                const target = Math.max(5, Math.floor(100 / (others.length + 1)));
-                rebalanceWeights(key, target);
-            }
-            renderSensitivityUI(); 
-        });
+        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { currentToggles[c.dataset.key] = c.checked; rebalanceWeights(c.dataset.key, c.checked ? 10 : 0); renderSensitivityUI(); });
         document.querySelectorAll('.w-slider').forEach(s => s.oninput = (e) => { rebalanceWeights(e.target.dataset.key, parseInt(e.target.value)); renderSensitivityUI(); });
-        document.getElementById('verdict-threshold-slider').value = currentSpamThreshold;
-        document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%';
     }
 
-    async function handleAction(type) {
-        const activeCard = document.querySelector('.stat-card.active');
-        const activeCat = activeCard ? activeCard.id.replace('card-','') : 'malicious';
-        const toProcess = []; for (const cat in stats) stats[cat].forEach(i => { if(selectedIds.has(i.entryId)) toProcess.push(i); });
-        if (!toProcess.length) return;
-        if (toProcess.length === 1) {
-            const seed = toProcess[0]; const val = (type === 'email') ? seed.sender : (type === 'ip') ? seed.ip : (type === 'domain') ? seed.domain : `${seed.ip}|${seed.domain}`;
-            ['malicious','suspicious','spam','safe'].forEach(c => { stats[c].forEach(other => {
-                let match = false; if (type === 'email' && other.sender === val) match = true; else if (type === 'ip' && other.ip === val) match = true; else if (type === 'domain' && other.domain === val) match = true; else if (type === 'combo' && `${other.ip}|${other.domain}` === val) match = true;
-                if (match && !toProcess.find(x => x.entryId === other.entryId)) toProcess.push(other);
-            }); });
-        }
-        toProcess.forEach(i => { pendingActions.add(i.entryId); selectedIds.delete(i.entryId); });
-        lastRenderedJson = ""; renderList();
-        if (activeCat === 'safe') {
-            const bls = toProcess.map(i => ({ type, value: (type==='email'?i.sender:type==='ip'?i.ip:type==='domain'?i.domain:`${i.ip}|${i.domain}`) }));
-            await api.quarantineEmail({ entryIds: toProcess.map(i=>i.entryId), blacklistEntries: bls });
-        } else {
-            const wls = toProcess.map(i => ({ type, value: (type==='email'?i.sender:type==='ip'?i.ip:type==='domain'?i.domain:`${i.ip}|${i.domain}`) }));
-            await api.releaseEmail({ entryIds: toProcess.map(i=>i.entryId), whitelistEntries: wls, originalFolders: toProcess.map(i=>i.originalFolder), unreads: toProcess.map(i=>i.unread) });
-        }
-        setTimeout(() => { toProcess.forEach(i => pendingActions.delete(i.entryId)); lastRenderedJson = ""; renderList(); }, 30000);
-    }
-
-    document.getElementById('ctx-email').onclick = () => handleAction('email');
-    document.getElementById('ctx-ip').onclick = () => handleAction('ip');
-    document.getElementById('ctx-domain').onclick = () => handleAction('domain');
-    document.getElementById('ctx-combo').onclick = () => handleAction('combo');
-    document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
-    document.getElementById('verdict-threshold-slider').oninput = (e) => { currentSpamThreshold = parseInt(e.target.value); document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%'; document.getElementById('verdict-description').textContent = `Emails scoring ${currentSpamThreshold}% or lower will be marked as SPAM.`; };
-    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if(cfg.rubrics){ currentWeights = { ...cfg.rubrics.weights }; currentToggles = { ...cfg.rubrics.toggles }; currentSpamThreshold = cfg.rubrics.spamThresholdPercent || 50; } renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
-    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); document.getElementById('sensitivity-modal').style.display = 'none'; };
-    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
-    document.getElementById('reset-sensitivity-defaults').onclick = () => { currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; currentSpamThreshold = 50; renderSensitivityUI(); };
+    document.getElementById('forensic-close').onclick = () => document.getElementById('forensic-modal').style.display = 'none';
+    document.getElementById('forensic-rfc').onclick = async () => { const data = await api.getForensics(currentForensicId); const win = window.open('', '_blank', 'width=950,height=900'); win.document.write(`<html><body style="background:#0a0e1c;color:#88c0d0;font-family:monospace;padding:20px;white-space:pre-wrap;word-break:break-all;">${escapeHTML(data.fullHeaders)}</body></html>`); };
+    document.getElementById('forensic-read').onclick = async () => { const data = await api.getForensics(currentForensicId); const win = window.open('', '_blank', 'width=950,height=900'); win.document.write(`<html><body style="background:#0a0e1c;color:#e1e4e8;font-family:sans-serif;padding:20px;white-space:pre-wrap;">${escapeHTML(data.body)}</body></html>`); };
+    document.getElementById('forensic-next').onclick = () => { const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === currentForensicId); if (index < items.length - 1) showForensics(items[index + 1].entryId); };
+    document.getElementById('forensic-prev').onclick = () => { const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === currentForensicId); if (index > 0) showForensics(items[index - 1].entryId); };
     
-    document.getElementById('settings-btn').onclick = async () => { 
-        const cfg = await api.getConfig();
-        document.getElementById('vt-api-key').value = cfg.vtApiKey || '';
-        document.getElementById('spam-keywords').value = (cfg.spamKeywords || []).join('\n');
-        document.getElementById('wl-emails').value = (cfg.whitelist?.emails || []).join('\n');
-        document.getElementById('bl-emails').value = (cfg.blacklist?.emails || []).join('\n');
-        document.getElementById('wl-ips').value = (cfg.whitelist?.ips || []).join('\n');
-        document.getElementById('bl-ips').value = (cfg.blacklist?.ips || []).join('\n');
-        document.getElementById('wl-domains').value = (cfg.whitelist?.domains || []).join('\n');
-        document.getElementById('bl-domains').value = (cfg.blacklist?.domains || []).join('\n');
-        document.getElementById('wl-combos').value = (cfg.whitelist?.combos || []).join('\n');
-        document.getElementById('bl-combos').value = (cfg.blacklist?.combos || []).join('\n');
-        document.getElementById('settings-modal').style.display = 'flex';
+    document.getElementById('reset-btn').onclick = () => api.resetApp();
+    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
+    document.getElementById('scanner-toggle').onclick = async () => { 
+        const targetState = !isProtectionEnabled;
+        const res = await api.setEnabled(targetState);
+        if (res && res.ok) {
+            isProtectionEnabled = targetState;
+            const b = document.getElementById('scanner-toggle');
+            if(b){ b.className = 'status-btn ' + (isProtectionEnabled ? 'on' : 'off'); b.textContent = isProtectionEnabled ? 'Turned On' : 'Turned Off'; }
+        }
     };
+    document.getElementById('settings-btn').onclick = async () => { const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey || ''; document.getElementById('settings-modal').style.display = 'flex'; };
     document.getElementById('save-settings').onclick = async () => {
         const vt = document.getElementById('vt-api-key').value;
         const kw = document.getElementById('spam-keywords').value.split('\n').filter(Boolean);
@@ -422,36 +255,51 @@
         const bli = document.getElementById('bl-ips').value.split('\n').filter(Boolean);
         const wld = document.getElementById('wl-domains').value.split('\n').filter(Boolean);
         const bld = document.getElementById('bl-domains').value.split('\n').filter(Boolean);
-        const wlc = document.getElementById('wl-combos').value.split('\n').filter(Boolean);
-        const blc = document.getElementById('bl-combos').value.split('\n').filter(Boolean);
-        await api.setVtKey(vt); await api.setSpamKeywords(kw);
-        await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: wlc });
-        await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: blc });
+        await api.setVTKey(vt); await api.setSpamKeywords(kw);
+        await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: [] });
+        await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: [] });
         document.getElementById('settings-modal').style.display = 'none';
     };
     document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
-    document.getElementById('scanner-toggle').onclick = async () => { const cfg = await api.getConfig(); api.setEnabled(!cfg.enabled); };
-    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
-    document.getElementById('reset-btn').onclick = () => api.resetApp();
+    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if(cfg.rubrics){ currentWeights = { ...cfg.rubrics.weights }; currentToggles = { ...cfg.rubrics.toggles }; currentSpamThreshold = cfg.rubrics.spamThresholdPercent || 50; } renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
+    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
+    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); document.getElementById('sensitivity-modal').style.display = 'none'; };
+    document.getElementById('verdict-threshold-slider').oninput = (e) => { 
+        currentSpamThreshold = parseInt(e.target.value); 
+        document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%'; 
+        document.getElementById('verdict-description').textContent = `Emails scoring ${currentSpamThreshold}% or lower will be marked as SPAM.`; 
+    };
+    document.getElementById('reset-sensitivity-defaults').onclick = () => { 
+        currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; 
+        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; 
+        currentSpamThreshold = 50; 
+        document.getElementById('verdict-threshold-slider').value = 50;
+        document.getElementById('verdict-threshold-val').textContent = '50%';
+        document.getElementById('verdict-description').textContent = 'Emails scoring 50% or lower will be marked as SPAM.';
+        renderSensitivityUI(); 
+    };
     document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); await api.setHistoryEnabled(!cfg.historyScanEnabled); document.getElementById('history-toggle').classList.toggle('active', !cfg.historyScanEnabled); };
-    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); selectedIds.clear(); lastRenderedJson = ""; renderList(); });
-    api.onLiveLog(addLog);
+    
+    document.getElementById('pg-first').onclick = () => { currentPage = 1; renderList(); };
+    document.getElementById('pg-prev').onclick = () => { if (currentPage > 1) { currentPage--; renderList(); } };
+    document.getElementById('pg-next').onclick = () => { const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; const total = Math.ceil((stats[cat]||[]).length / pageSize); if (currentPage < total) { currentPage++; renderList(); } };
+    document.getElementById('pg-last').onclick = () => { const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; currentPage = Math.max(1, Math.ceil((stats[cat]||[]).length / pageSize)); renderList(); };
+
+    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); currentPage = 1; lastRenderedJson = ""; renderList(); });
+    
     api.onOutlookScanUpdate(d => {
-        addLog(`${d.status}: ${d.details}`);
-        if (d.status === 'SPAM FILTERED' || d.action === 'Quarantined') {
-            api.getStats().then(updateDashboard);
+        if (!d) return; addLog(`${d.status}: ${d.details}`);
+        if (d.status === 'MONITORING') { const ind = document.getElementById('scan-status-indicator'); if(ind){ ind.style.display = 'flex'; document.getElementById('scan-status-text').textContent = 'LIVE MONITORING'; } }
+        else if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED'].includes(d.status)) {
+            const cat = d.verdict.toLowerCase().includes('malicious') ? 'malicious' : (d.verdict.toLowerCase().includes('spam') ? 'spam' : 'safe');
+            if (stats[cat] && !stats[cat].find(x => x.entryId === d.entryId)) { stats[cat].push(d); updateDashboard(stats); }
         }
     });
-    api.onEmailMoved(d => {
-        if (d.status === 'Finished' || d.status === 'Error') {
-            pendingActions.delete(d.entryId);
-            lastRenderedJson = "";
-            api.getStats().then(updateDashboard);
-        }
-    });
-    api.onStatusSync(en => { const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } });
-    api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); else if (d.delta) { for(const c in d.stats) { if(!stats[c]) stats[c]=[]; stats[c].push(...d.stats[c]); } updateDashboard(stats); } });
-    async function init() { const cfg = await api.getConfig(); applyColWidths(); document.getElementById('history-toggle').classList.toggle('active', !!cfg.historyScanEnabled); updateDashboard(await api.getStats()); }
+    api.onStatusSync(en => { isProtectionEnabled = en; const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } });
+    api.onOutlookStatus(running => { const dot = document.getElementById('outlook-dot'), text = document.getElementById('outlook-text'); if(dot){ dot.style.background = running ? 'var(--ok)' : 'var(--danger)'; text.textContent = running ? 'OUTLOOK: CONNECTED' : 'OUTLOOK: DISCONNECTED'; } });
+    api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); });
+    
+    async function init() { const s = await api.getStats(); updateDashboard(s); const cfg = await api.getConfig(); if (cfg.columnWidths) colWidths = cfg.columnWidths; isProtectionEnabled = !!cfg.enabled; const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (isProtectionEnabled?'on':'off'); b.textContent = isProtectionEnabled?'Turned On':'Turned Off'; } applyColWidths(); }
     init();
   </script>
 </body>

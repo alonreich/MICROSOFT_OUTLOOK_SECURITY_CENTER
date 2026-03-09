@@ -28,11 +28,13 @@ contextBridge.exposeInMainWorld('securityApi', {
         ipcRenderer.removeAllListeners('stats-update');
         ipcRenderer.removeAllListeners('live-log');
         ipcRenderer.removeAllListeners('email-moved');
+        ipcRenderer.removeAllListeners('outlook-status');
     },
     onOutlookScanUpdate: callback => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
     onStatusSync: callback => ipcRenderer.on('status-sync', (event, value) => callback(value)),
     onStatsUpdate: callback => ipcRenderer.on('stats-update', (event, data) => callback(data)),
     onLiveLog: callback => ipcRenderer.on('live-log', (event, message) => callback(message)),
+    onOutlookStatus: callback => ipcRenderer.on('outlook-status', (event, running) => callback(running)),
     onEmailMoved: callback => ipcRenderer.on('email-moved', (event, data) => callback(data)),
     quarantineEmail: (data) => invoke('quarantine-email', data),
     getForensics: (id) => invoke('get-forensics', id)
