@@ -1,5 +1,5 @@
 # SOURCE OF TRUTH: MICROSOFT OUTLOOK SECURITY CENTER
-# VERSION: 2.1.0 (Enterprise-Grade)
+# VERSION: 2.3.0 (Hardened Release)
 # TARGET: AI AGENT / SENIOR DEVELOPER HANDOFF
 
 ## 1. PROJECT MISSION
@@ -7,42 +7,60 @@ To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook 
 
 ## 2. HARDENED ARCHITECTURE (REALITY)
 - **UI:** Electron.js (Context-Isolated, Node-Integration Disabled).
-- **Backend IPC:** Bidirectional Named Pipe with ENV-backed handshake. Eliminates stdin buffering issues and race conditions.
+- **UI Architecture:** Component-Based Modular Architecture. Logic is segmented into specialized ui_*.js modules for maintainability.
+- **Backend IPC:** Bidirectional Named Pipe with ENV-backed handshake. High-speed caching layer in the main process eliminates UI bottlenecks.
+- **Dual-Store Database:** Optimized split storage. `config.json` for lightweight settings and `data.json` for high-volume historical scan records and processed IDs.
 - **Engine:** 8-Core Parallel PowerShell Runspace Pool. Decouples Outlook COM extraction (STA) from heavy security analysis (MTA).
-- **Credential Protection:** Windows DPAPI (via Electron safeStorage). API keys never exist in plaintext on disk.
-- **Database:** Atomic Electron-store with global file-locking and Read-Modify-Write transaction logic to prevent data loss during high-volume parallel scans.
-- **Multi-Account Support:** Store-aware logic dynamically targets the specific Junk/Deleted folders of the originating account across multiple Outlook data files.
+- **Credential Protection:** Windows DPAPI (via Electron safeStorage). API keys never exist in plaintext on disk and are decrypted only for active API sessions or user-requested exports.
+- **Deduplication:** Content-aware SHA256 "Digital Fingerprints" (Sender + Subject + Timestamp) ensure that emails are tracked uniquely even if moved, copied, or re-scanned.
 
 ## 3. ZERO-DISK FORENSIC PROTOCOL
-- **MIME Isolation:** Attachments are streamed directly from the COM layer into RAM byte arrays for hashing (SHA256/MD5).
-- **Heuristic Reconstruction:** Automated synthetic header generation for internal Exchange/M365 items lacking standard SMTP transport headers.
-- **Aggressive Body Parsing:** Tag-stripping HTML intercept for forensic view when plain-text body properties are empty.
+- **MIME Isolation:** Attachments and headers are streamed directly from the COM layer into memory.
+- **Verified Transactional Moves:** No-split-brain logic. UI only updates after the backend performs a real-time probe to confirm an email has successfully landed in its target Outlook folder.
+- **State Preservation:** Strictly non-disruptive analysis. Original UnRead/Read states are captured and force-restored after every scan or folder transition.
+- **Deep-Chain IP Analysis:** Bottom-up parsing of Received headers that filters out known cloud relays (AWS/M365) to identify the true originating server.
 
 ## 4. RESOURCE & STABILITY MANAGEMENT
 - **COM Lifecycle:** Strict `Marshal.ReleaseComObject` protocol for every reference to prevent `OUTLOOK.EXE` zombie processes.
-- **Atomic State Clearing:** Hard reset uses file-lock synchronization to prevent runtime errors during configuration wipes.
-- **Watchdog Engine:** 60-minute hard-kill for hung scanning processes and real-time heartbeat monitoring.
+- **Nuclear Reset Protocol:** Comprehensive system wipe that physically unlinks all database files, purges forensic JSON fragments, deletes security logs, and restores factory defaults.
+- **Watchdog Engine:** 60-second hard-kill for hung scanning processes and real-time heartbeat monitoring.
+- **Proactive Outlook Management:** Automated registry-based lookup and background launch of Outlook if not running.
 
 ## 5. SCANNING & PRIORITIZATION
-- **OnAccess:** Monitors [Unread] items globally across all folders and stores.
-- **Automatic Cascade Release:** Restoring/Whitelisting an item automatically triggers a cross-category search and release for all matching items (IP, Sender, Domain, or Combination).
-- **3-Tier Failover:** 
-    1. VirusTotal API (Primary).
-    2. Team Cymru MHR (DNS-based fallback).
-    3. Local Heuristics/Spam Rubrics (Final).
+- **OnAccess:** Real-time monitoring of incoming items.
+- **Bulk Action Logic:** Marking an email as Safe/Spam automatically identifies and processes all other items in the current list meeting the same criteria (Sender, Domain, IP, or Combo).
+- **ANTI-SPAM ENGINES (8-Tier Analysis):** 
+    1. VirusTotal API (IP/URL Reputation).
+    2. DMARC/SPF/DKIM Authentication.
+    3. Sender/Domain Alignment.
+    4. Reverse DNS Verification.
+    5. Global RBL Blacklists.
+    6. Anti-Phishing Shield (Body/Link Analysis).
+    7. Smart Heuristics (Keyword Matching).
+    8. IP|Domain Combo Filtering.
+- **Portability:** Professional JSON Import/Export for the entire security configuration, including decrypted API keys for cross-system migration.
 
 ## 6. VERDICT ROUTING
-- **MALICIOUS:** Confirmed Malware/Phishing -> **Deleted Items** (Isolation).
-- **SPAM:** High-score suspicion -> **Junk Email** (Quarantine).
-- **SUSPICIOUS:** Moderate score or Reputation Hook -> UI Dashboard listing.
-- **SAFE:** Whitelisted or Low-score -> **Inbox** (Untouched).
-- **Restoration:** Perfect state recovery (Return to original folder with original Read/Unread status).
+- **MALICIOUS:** Confirmed Malware/Phishing -> **Deleted Items**.
+- **SPAM:** High-score suspicion -> **Junk Email**.
+- **SUSPICIOUS:** Moderate score -> UI Dashboard listing.
+- **SAFE:** Whitelisted or Low-score -> **Inbox**.
 
 ## 7. PROJECT FILE MANIFEST
-- `main.js`: System core, IPC coordination, and atomic database management.
-- `outlook-scanner.ps1`: Multi-threaded analysis engine and Outlook bridge.
-- `index.html`: Forensic dashboard and security configuration UI.
+- `main.js`: System core, IPC coordination, and dual-store database management.
+- `outlook-scanner.ps1`: Multi-threaded analysis engine and digital fingerprinting bridge.
+- `index.html`: Main dashboard shell and core UI event orchestration.
+- `ui_settings.js`: Modular logic for system configuration and policy management.
+- `ui_engines.js`: Modular logic for ANTI-SPAM ENGINES and professional tooltips.
+- `ui_forensics.js`: Forensic modal logic for deep email analysis.
+- `ui_history.js`: Modular logic for historical scan management.
+- `ui_list.js`: List rendering, pagination, and security-aware context menus.
+- `ui_reset.js`: Nuclear Reset Protocol implementation.
 - `preload.js`: Secure bridge between UI and Node.js.
 - `package.json`: Dependency and build configuration.
 - `silent_launcher.vbs`: Hidden startup coordinator.
 - `MICROSOFT_OUTLOOK_SECURITY_CENTER.bat`: CLI entry point.
+- `tray_on.png` / `tray_off.png`: Status-aware system tray icons.
+- `icon.png` / `icon_on.png` / `icon_off.png`: Application branding assets.
+- `logs/`: Directory for security logs and engine output.
+- `logs/forensics/`: Storage for zero-disk forensic snapshots.

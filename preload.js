@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+﻿const { contextBridge, ipcRenderer } = require('electron');
 
 const invoke = (channel, payload) => ipcRenderer.invoke(channel, payload);
 
@@ -12,16 +12,13 @@ contextBridge.exposeInMainWorld('securityApi', {
     setRubrics: value => invoke('set-rubrics', value),
     setWhitelist: value => invoke('set-whitelist', value),
     setBlacklist: value => invoke('set-blacklist', value),
-    setSchedule: value => invoke('set-schedule', value),
     saveColumnWidths: value => invoke('save-column-widths', value),
+    setStartup: value => invoke('set-startup', value),
+    exportConfig: () => invoke('export-config'),
+    importConfig: () => invoke('import-config'),
     openLogsFolder: () => invoke('open-logs-folder'),
     resetApp: () => invoke('app-reset'),
-    clearSecurityCache: () => invoke('clear-security-cache'),
     releaseEmail: value => invoke('release-email', value),
-    checkPowerStatus: () => invoke('check-power-status'),
-    overridePowerPlan: () => invoke('override-power-plan'),
-    backupConfig: () => invoke('backup-config'),
-    restoreConfig: () => invoke('restore-config'),
     cleanupListeners: () => {
         ipcRenderer.removeAllListeners('outlook-scan-update');
         ipcRenderer.removeAllListeners('status-sync');
@@ -39,3 +36,4 @@ contextBridge.exposeInMainWorld('securityApi', {
     quarantineEmail: (data) => invoke('quarantine-email', data),
     getForensics: (id) => invoke('get-forensics', id)
 });
+

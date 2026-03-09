@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -34,7 +34,8 @@
     .list-item:hover { background: rgba(142, 117, 255, 0.05); }
     .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
     .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; text-align: center; }
-    .log-area { background: #1e243a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; }
+    .log-area { background: #1e243a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; pointer-events: auto !important; }
+    .log-area div { user-select: text !important; -webkit-user-select: text !important; }
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
     .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 850px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
     .modal-header { font-weight: 700; font-size: 1.1rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); text-align: center; color: #fff; letter-spacing: 1px; }
@@ -42,6 +43,17 @@
     .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; top: -1px; border-bottom-width: 3px; }
     .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); top: 1px; border-bottom-width: 1px; }
     .btn-ui:active { top: 1px; border-bottom-width: 1px; }
+    .btn-ui.success { background: linear-gradient(180deg, #40c060 0%, #206030 100%); color: #fff; border-color: #40c060; }
+    .btn-ui.danger { background: linear-gradient(180deg, #d04040 0%, #602020 100%); color: #fff; border-color: #d04040; }
+    
+    .setting-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px; }
+    .setting-group label { font-size: 0.7rem; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+    .setting-group input, .setting-group textarea { background: #1e233a; border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: #fff; font-family: 'Consolas', monospace; font-size: 0.8rem; outline: none; transition: all 0.2s; resize: none; }
+    .setting-group input:focus, .setting-group textarea:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.2); background: #252b45; }
+    .setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px; }
+    .section-divider { height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin: 25px 0; position: relative; }
+    .section-divider::after { content: attr(data-label); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg); padding: 0 15px; font-size: 0.6rem; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+
     .btn-step { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); width: auto; min-width: 16px; height: 16px; border-radius: 3px; cursor: pointer; font-size: 0.4rem; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; top: 0; border-bottom: 1px solid #141829; transition: all 0.1s; padding: 0 4px; }
     .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); top: -1px; border-bottom-width: 2px; }
     .btn-step:active:not(:disabled) { top: 1px; border-bottom-width: 1px; }
@@ -70,17 +82,17 @@
             <span id="outlook-text" style="font-size:0.65rem; font-weight:900; color:var(--muted);">OUTLOOK: DISCONNECTED</span>
         </div>
         <button id="history-toggle" class="btn-ui">HISTORY SCAN</button>
-        <button id="sensitivity-btn" class="btn-ui">ENGINES</button>
+        <button id="sensitivity-btn" class="btn-ui">ANTI-SPAM ENGINES</button>
         <button id="settings-btn" class="btn-ui">SETTINGS</button>
         <button id="scanner-toggle" class="status-btn off">Turned Off</button>
     </div>
   </header>
   <div class="main-grid">
     <aside class="sidebar">
-        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div></div>
-        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div></div>
-        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div></div>
-        <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div></div>
+        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Critical Threats Blocked</div></div>
+        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Flagged for Review</div></div>
+        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Quarantined to Junk</div></div>
+        <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Inbox / Trusted Senders</div></div>
         <div style="flex:1"></div>
         <button id="show-logs-btn" class="btn-ui" style="width:100%; justify-content:center;">OPEN LOGS</button>
         <button id="reset-btn" class="btn-ui danger" style="width:100%; justify-content:center;">RESET APP</button>
@@ -100,141 +112,89 @@
         <div id="log-container" class="log-area"></div>
     </main>
   </div>
-  <div id="sensitivity-modal" class="modal">
-    <div class="modal-content" style="width: 650px;">
-        <div class="modal-header">ANTI-SPAM ENGINES</div>
-        <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; padding: 10px; overflow-y: auto;"></div>
-        <div style="margin-top: 20px; padding: 15px; border-top: 2px solid var(--border); background: rgba(142, 117, 255, 0.05); border-radius: 10px;">
-            <div style="text-align: center; margin-bottom: 10px;"><div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div></div>
-            <div style="display: flex; align-items: center; gap: 15px;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div><input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div></div>
-            <div style="text-align: center; margin-top: 10px;"><span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span><div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div></div>
-        </div>
-        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;"><button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button><button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button><button id="close-sensitivity" class="btn-ui danger">CANCEL</button></div>
-    </div>
-  </div>
-  <div id="settings-modal" class="modal">
-    <div class="modal-content" style="width: 900px;">
-        <div class="modal-header">SETTINGS</div>
-        <div style="overflow-y: auto; flex: 1; padding-right: 10px;">
-            <div class="setting-group"><label>VirusTotal Enterprise API Key</label><input type="text" id="vt-api-key" placeholder="Enter key..."></div>
-            <div class="setting-grid"><div class="setting-group"><label>Trusted Emails</label><textarea id="wl-emails" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked Emails</label><textarea id="bl-emails" style="height:80px;"></textarea></div></div>
-            <div class="setting-grid"><div class="setting-group"><label>Trusted IPs</label><textarea id="wl-ips" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked IPs</label><textarea id="bl-ips" style="height:80px;"></textarea></div></div>
-            <div class="setting-grid"><div class="setting-group"><label>Trusted Domains</label><textarea id="wl-domains" style="height:80px;"></textarea></div><div class="setting-group"><label>Blocked Domains</label><textarea id="bl-domains" style="height:80px;"></textarea></div></div>
-            <div class="setting-group"><label>Global Spam Keywords</label><textarea id="spam-keywords" style="height:100px;"></textarea></div>
-        </div>
-        <div style="display:flex; justify-content: center; gap:15px; margin-top:20px;"><button id="save-settings" class="btn-ui success">SAVE</button><button id="close-settings" class="btn-ui danger">CANCEL</button></div>
-    </div>
-  </div>
-  <div id="forensic-modal" class="modal">
-    <div class="modal-content" style="width: 1200px; font-family: Arial, sans-serif; font-size: 11pt;">
-        <div class="modal-header">EMAIL FORENSIC DETAILS</div>
-        <div id="forensic-fields" style="display: flex; flex-direction: column; gap: 0; padding: 10px;"></div>
-        <div style="margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; padding-top: 20px; border-top: 1px solid var(--border);">
-            <button id="forensic-rfc" class="btn-ui">SHOW EMAIL HEADERS (RFC822)</button>
-            <button id="forensic-read" class="btn-ui"><svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg>&nbsp;&nbsp;READ EMAIL CONTENT&nbsp;&nbsp;<svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg></button>
-            <button id="forensic-prev" class="btn-ui">PREVIOUS <<</button><button id="forensic-next" class="btn-ui">NEXT >></button><button id="forensic-close" class="btn-ui danger">CLOSE</button>
-        </div>
-    </div>
-  </div>
-  <div id="ctx-menu" class="context-menu">
-    <div class="context-menu-item" id="ctx-copy" style="border-bottom: 1px solid var(--accent); color: var(--accent); display: none;">Copy Selection</div>
-    <div class="context-menu-item" id="ctx-email">Mark based on Email</div>
-    <div class="context-menu-item" id="ctx-ip">Mark based on IP</div>
-    <div class="context-menu-item" id="ctx-domain">Mark based on Domain</div>
-    <div class="context-menu-item" id="ctx-combo">Mark based on Combo</div>
-  </div>
+
+  <script src="ui_settings.js"></script>
+  <script src="ui_engines.js"></script>
+  <script src="ui_forensics.js"></script>
+  <script src="ui_history.js"></script>
+  <script src="ui_list.js"></script>
+  <script src="ui_reset.js"></script>
   <script>
     const api = window.securityApi;
     const list = document.getElementById('threat-list'), logContainer = document.getElementById('log-container'), tooltipEl = document.getElementById('tooltip');
-    let stats = { malicious: [], suspicious: [], spam: [], safe: [] }, selectedIds = new Set(), pendingActions = new Set(), isProtectionEnabled = false, currentWeights = {}, currentToggles = {}, currentSpamThreshold = 50, colWidths = {}, lastRenderedJson = "", currentForensicId = null;
-    let currentPage = 1, pageSize = 50, renderPending = false;
+    window.stats = { malicious: [], suspicious: [], spam: [], safe: [] };
+    let selectedIds = new Set(), pendingActions = new Set(), isProtectionEnabled = false, currentWeights = {}, currentToggles = {}, currentSpamThreshold = 50, colWidths = {}, lastRenderedJson = "", currentForensicId = null;
 
-    function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-    function addLog(msg) { if (!msg) return; const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
-    function applyColWidths() { const root = document.documentElement; Object.keys(colWidths).forEach(k => root.style.setProperty(`--col-${k}`, colWidths[k])); }
+    window.escapeHTML = function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+    window.addLog = function addLog(msg) { if (!msg) return; const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
+    function applyColWidths() { 
+        const root = document.documentElement; 
+        Object.keys(colWidths).forEach(k => {
+            let val = colWidths[k];
+            if (typeof val === 'number') val = val + 'px';
+            root.style.setProperty(`--col-${k}`, val);
+        }); 
+    }
     
-    function renderList() {
-        if (renderPending) return;
-        renderPending = true;
-        requestAnimationFrame(() => {
-            const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious';
-            const allItems = (stats[cat] || []).slice().reverse();
-            const totalPages = Math.max(1, Math.ceil(allItems.length / pageSize));
-            if (currentPage > totalPages) currentPage = totalPages;
-            const start = (currentPage - 1) * pageSize;
-            const items = allItems.slice(start, start + pageSize);
-            
-            document.getElementById('pg-info').textContent = `Page ${currentPage} of ${totalPages}`;
-            document.getElementById('pg-first').disabled = currentPage === 1;
-            document.getElementById('pg-prev').disabled = currentPage === 1;
-            document.getElementById('pg-next').disabled = currentPage === totalPages;
-            document.getElementById('pg-last').disabled = currentPage === totalPages;
-
-            const hash = JSON.stringify(items.map(i => i.entryId + (selectedIds.has(i.entryId) ? '_s' : '')));
-            if (hash !== lastRenderedJson) {
-                lastRenderedJson = hash;
-                if (allItems.length === 0) { list.innerHTML = `<div style="grid-column: 1 / -1; padding:40px; text-align:center; color:var(--muted); font-size:0.8rem; font-weight:800; width: 100%;">NO EMAILS DETECTED</div>`; }
-                else {
-                    list.innerHTML = items.map(i => {
-                        const ts = i.timestamp || "", [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""], vColor = cat === 'safe' ? 'var(--ok)' : cat === 'malicious' ? 'var(--danger)' : cat === 'suspicious' ? 'var(--warn)' : '#8e75ff', sub = i.subject || i.details || "No Subject";
-                        return `<div class="list-item ${selectedIds.has(i.entryId)?'selected':''}" data-id="${escapeHTML(i.entryId)}"><div title="${escapeHTML(sub)}">${escapeHTML(sub)}</div><div>${escapeHTML(d)}</div><div>${escapeHTML(t)}</div><div>${escapeHTML(i.ip||'N/A')}</div><div style="color:${vColor}; font-weight:bold;">${cat.toUpperCase()}</div><div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score||100)}%</div><div>${escapeHTML(i.action||'None')}</div><div title="${escapeHTML(i.tier||'')}">${escapeHTML(i.tier||'')}</div></div>`;
-                    }).join('');
-                    document.querySelectorAll('.list-item').forEach(el => { 
-                        el.onclick = (e) => { 
-                            const id = el.dataset.id; 
-                            if (!e.ctrlKey) { document.querySelectorAll('.list-item').forEach(x => x.classList.remove('selected')); selectedIds.clear(); }
-                            if (selectedIds.has(id)) { selectedIds.delete(id); el.classList.remove('selected'); } else { selectedIds.add(id); el.classList.add('selected'); }
-                        }; 
-                        el.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showForensics(el.dataset.id); }; 
-                    });
-                }
-            }
-            renderPending = false;
+    
+    (function() {
+        let startX, startWidth, currentHeader, currentCol;
+        document.querySelectorAll('.resizer').forEach(resizer => {
+            resizer.addEventListener('mousedown', e => {
+                e.preventDefault();
+                currentHeader = e.target.parentElement;
+                currentCol = currentHeader.dataset.col;
+                startX = e.pageX;
+                startWidth = currentHeader.offsetWidth;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
         });
-    }
 
-    function showForensics(id) {
-        currentForensicId = id; const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === id); const item = items[index]; if (!item) return;
-        const ts = item.timestamp || ""; const [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""], sub = item.subject || item.details || "No Subject";
-        const fields = [ { l: 'DATE', v: d }, { l: 'TIME', v: t }, { l: 'FROM', v: item.sender }, { l: 'TO', v: item.to || 'N/A' }, { l: 'CC', v: item.cc || 'N/A' }, { l: 'SUBJECT', v: sub }, { l: 'IP ADDRESS', v: item.ip || 'N/A' }, { l: 'VERDICT', v: cat.toUpperCase() }, { l: 'SCORE', v: Math.round(item.score || 0) + '%' }, { l: 'ACTION', v: item.action || 'None' }, { l: 'REASONING', v: item.tier || 'None' } ];
-        document.getElementById('forensic-fields').innerHTML = fields.map(f => `<div style="display:flex; align-items:center; gap:10px; padding-bottom:15px; margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.05); user-select: text !important; -webkit-user-select: text !important;"><span style="font-weight:bold; min-width:180px; color:var(--muted); font-size:0.75rem; text-transform:uppercase; text-align:right; padding-right:20px; user-select: text !important; -webkit-user-select: text !important; cursor: text;">${f.l}:</span><span style="flex:1; color:#fff; font-size:0.85rem; word-break:break-all; user-select: text !important; -webkit-user-select: text !important; cursor: text;">${escapeHTML(f.v)}</span><div style="width:16px; height:16px; fill:var(--accent); cursor:pointer; display:flex; align-items:center; justify-content:center; user-select: none;" onclick="copyToClipboard('${escapeHTML(f.v)}')"><svg viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" /></svg></div></div>`).join('');
-        document.getElementById('forensic-modal').style.display = 'flex';
-        document.getElementById('forensic-prev').disabled = index === 0;
-        document.getElementById('forensic-next').disabled = index === items.length - 1;
-    }
+        function onMouseMove(e) {
+            if (!currentCol) return;
+            const width = startWidth + (e.pageX - startX);
+            if (width > 50) {
+                colWidths[currentCol] = width + 'px';
+                applyColWidths();
+            }
+        }
 
-    function updateDashboard(data) { if (!data) return; for (const cat in data) { if (stats.hasOwnProperty(cat)) { stats[cat] = (data[cat] || []).filter(i => !pendingActions.has(i.entryId)); } } ['malicious','suspicious','spam','safe'].forEach(c => { const el = document.getElementById('count-'+c); if(el) el.textContent = (stats[c] || []).length; }); renderList(); }
+        function onMouseUp() {
+            if (currentCol) {
+                api.saveColumnWidths(colWidths);
+            }
+            currentCol = null;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+    })();
+    
+    function updateDashboard(data) { 
+        if (!data) return; 
+        let populatedCat = null, populatedCount = 0;
+        for (const cat in data) { 
+            if (window.stats.hasOwnProperty(cat)) { 
+                window.stats[cat] = (data[cat] || []).filter(i => !pendingActions.has(i.entryId)); 
+                const len = window.stats[cat].length;
+                if (len > 0) { populatedCat = cat; populatedCount++; }
+            } 
+        } 
+        ['malicious','suspicious','spam','safe'].forEach(c => { 
+            const el = document.getElementById('count-'+c); 
+            if(el) el.textContent = (window.stats[c] || []).length; 
+        }); 
+        
+        if (populatedCount === 1 && populatedCat) {
+            const card = document.getElementById('card-' + populatedCat);
+            if (card && !card.classList.contains('active')) card.click();
+        }
+        
+        window.renderList(); 
+    }
     
     window.copyToClipboard = (text) => { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const t = document.getElementById('toast'); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2000); };
-    window.stepWeight = (key, delta) => { if (!currentToggles[key]) return; let newVal = currentWeights[key] + delta; if (newVal < 1) newVal = 1; if (newVal > 100) newVal = 100; rebalanceWeights(key, newVal); renderSensitivityUI(); };
-    function rebalanceWeights(key, newVal) {
-        if (!currentToggles[key]) { currentWeights[key] = 0; } else {
-            const oldVal = currentWeights[key] || 0; const diff = newVal - oldVal; currentWeights[key] = newVal;
-            const activeKeys = Object.keys(currentWeights).filter(k => k !== key && currentToggles[k]);
-            if (activeKeys.length > 0) { let rem = diff; activeKeys.forEach(k => { const share = Math.round(rem / activeKeys.length); currentWeights[k] -= share; rem -= share; }); currentWeights[activeKeys[0]] -= rem; }
-        }
-        Object.keys(currentWeights).forEach(k => { if (!currentToggles[k]) currentWeights[k] = 0; else if (currentWeights[k] < 1) currentWeights[k] = 1; });
-        let total = 0; const activeKeys = Object.keys(currentWeights).filter(k => currentToggles[k]); activeKeys.forEach(k => total += currentWeights[k]);
-        if (total !== 100 && activeKeys.length > 0) { const adjustKey = activeKeys.find(k => k !== key) || activeKeys[0]; currentWeights[adjustKey] += (100 - total); }
-    }
-    function renderSensitivityUI() {
-        const container = document.getElementById('sensitivity-container');
-        const labels = { dmarc: 'DMARC AUTHENTICATION', alignment: 'SENDER ALIGNMENT', dkim: 'DKIM SIGNATURES', spf: 'SPF AUTHORIZATION', rdns: 'REVERSE DNS CHECK', body: 'BODY INTEGRITY', heuristics: 'SCAM KEYWORDS', rbl: 'GLOBAL BLACKLISTS' };
-        container.innerHTML = Object.keys(currentWeights).map(key => {
-            const val = currentWeights[key]; const en = currentToggles[key];
-            return `<div class="sensitivity-row" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4};"><input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}> <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div> <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;"> <div style="display:flex; align-items:center; gap:8px;"> <button class="btn-step" onclick="stepWeight('${key}',-1)" ${en?'':'disabled'}>-</button> <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div> <button class="btn-step" onclick="stepWeight('${key}',1)" ${en?'':'disabled'}>+</button> </div> </div>`;
-        }).join('');
-        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { currentToggles[c.dataset.key] = c.checked; rebalanceWeights(c.dataset.key, c.checked ? 10 : 0); renderSensitivityUI(); });
-        document.querySelectorAll('.w-slider').forEach(s => s.oninput = (e) => { rebalanceWeights(e.target.dataset.key, parseInt(e.target.value)); renderSensitivityUI(); });
-    }
-
-    document.getElementById('forensic-close').onclick = () => document.getElementById('forensic-modal').style.display = 'none';
-    document.getElementById('forensic-rfc').onclick = async () => { const data = await api.getForensics(currentForensicId); const win = window.open('', '_blank', 'width=950,height=900'); win.document.write(`<html><body style="background:#0a0e1c;color:#88c0d0;font-family:monospace;padding:20px;white-space:pre-wrap;word-break:break-all;">${escapeHTML(data.fullHeaders)}</body></html>`); };
-    document.getElementById('forensic-read').onclick = async () => { const data = await api.getForensics(currentForensicId); const win = window.open('', '_blank', 'width=950,height=900'); win.document.write(`<html><body style="background:#0a0e1c;color:#e1e4e8;font-family:sans-serif;padding:20px;white-space:pre-wrap;">${escapeHTML(data.body)}</body></html>`); };
-    document.getElementById('forensic-next').onclick = () => { const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === currentForensicId); if (index < items.length - 1) showForensics(items[index + 1].entryId); };
-    document.getElementById('forensic-prev').onclick = () => { const activeCard = document.querySelector('.stat-card.active'); const cat = activeCard ? activeCard.id.replace('card-','') : 'malicious'; const items = (stats[cat] || []).slice().reverse(); const index = items.findIndex(i => i.entryId === currentForensicId); if (index > 0) showForensics(items[index - 1].entryId); };
     
-    document.getElementById('reset-btn').onclick = () => api.resetApp();
     document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
     document.getElementById('scanner-toggle').onclick = async () => { 
         const targetState = !isProtectionEnabled;
@@ -245,62 +205,51 @@
             if(b){ b.className = 'status-btn ' + (isProtectionEnabled ? 'on' : 'off'); b.textContent = isProtectionEnabled ? 'Turned On' : 'Turned Off'; }
         }
     };
-    document.getElementById('settings-btn').onclick = async () => { const cfg = await api.getConfig(); document.getElementById('vt-api-key').value = cfg.vtApiKey || ''; document.getElementById('settings-modal').style.display = 'flex'; };
-    document.getElementById('save-settings').onclick = async () => {
-        const vt = document.getElementById('vt-api-key').value;
-        const kw = document.getElementById('spam-keywords').value.split('\n').filter(Boolean);
-        const wle = document.getElementById('wl-emails').value.split('\n').filter(Boolean);
-        const ble = document.getElementById('bl-emails').value.split('\n').filter(Boolean);
-        const wli = document.getElementById('wl-ips').value.split('\n').filter(Boolean);
-        const bli = document.getElementById('bl-ips').value.split('\n').filter(Boolean);
-        const wld = document.getElementById('wl-domains').value.split('\n').filter(Boolean);
-        const bld = document.getElementById('bl-domains').value.split('\n').filter(Boolean);
-        await api.setVTKey(vt); await api.setSpamKeywords(kw);
-        await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: [] });
-        await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: [] });
-        document.getElementById('settings-modal').style.display = 'none';
-    };
-    document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
-    document.getElementById('sensitivity-btn').onclick = async () => { const cfg = await api.getConfig(); if(cfg.rubrics){ currentWeights = { ...cfg.rubrics.weights }; currentToggles = { ...cfg.rubrics.toggles }; currentSpamThreshold = cfg.rubrics.spamThresholdPercent || 50; } renderSensitivityUI(); document.getElementById('sensitivity-modal').style.display = 'flex'; };
-    document.getElementById('close-sensitivity').onclick = () => document.getElementById('sensitivity-modal').style.display = 'none';
-    document.getElementById('save-sensitivity').onclick = async () => { const cfg = await api.getConfig(); api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); document.getElementById('sensitivity-modal').style.display = 'none'; };
-    document.getElementById('verdict-threshold-slider').oninput = (e) => { 
-        currentSpamThreshold = parseInt(e.target.value); 
-        document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%'; 
-        document.getElementById('verdict-description').textContent = `Emails scoring ${currentSpamThreshold}% or lower will be marked as SPAM.`; 
-    };
-    document.getElementById('reset-sensitivity-defaults').onclick = () => { 
-        currentWeights = { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }; 
-        currentToggles = { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }; 
-        currentSpamThreshold = 50; 
-        document.getElementById('verdict-threshold-slider').value = 50;
-        document.getElementById('verdict-threshold-val').textContent = '50%';
-        document.getElementById('verdict-description').textContent = 'Emails scoring 50% or lower will be marked as SPAM.';
-        renderSensitivityUI(); 
-    };
-    document.getElementById('history-toggle').onclick = async () => { const cfg = await api.getConfig(); await api.setHistoryEnabled(!cfg.historyScanEnabled); document.getElementById('history-toggle').classList.toggle('active', !cfg.historyScanEnabled); };
-    
-    document.getElementById('pg-first').onclick = () => { currentPage = 1; renderList(); };
-    document.getElementById('pg-prev').onclick = () => { if (currentPage > 1) { currentPage--; renderList(); } };
-    document.getElementById('pg-next').onclick = () => { const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; const total = Math.ceil((stats[cat]||[]).length / pageSize); if (currentPage < total) { currentPage++; renderList(); } };
-    document.getElementById('pg-last').onclick = () => { const cat = document.querySelector('.stat-card.active')?.id.replace('card-','') || 'malicious'; currentPage = Math.max(1, Math.ceil((stats[cat]||[]).length / pageSize)); renderList(); };
-
-    document.querySelectorAll('.stat-card').forEach(c => c.onclick = () => { document.querySelectorAll('.stat-card').forEach(s => s.classList.remove('active')); c.classList.add('active'); currentPage = 1; lastRenderedJson = ""; renderList(); });
     
     api.onOutlookScanUpdate(d => {
-        if (!d) return; addLog(`${d.status}: ${d.details}`);
-        if (d.status === 'MONITORING') { const ind = document.getElementById('scan-status-indicator'); if(ind){ ind.style.display = 'flex'; document.getElementById('scan-status-text').textContent = 'LIVE MONITORING'; } }
-        else if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED'].includes(d.status)) {
-            const cat = d.verdict.toLowerCase().includes('malicious') ? 'malicious' : (d.verdict.toLowerCase().includes('spam') ? 'spam' : 'safe');
-            if (stats[cat] && !stats[cat].find(x => x.entryId === d.entryId)) { stats[cat].push(d); updateDashboard(stats); }
+        if (!d) return; 
+        window.addLog(`${d.status}: ${d.details}`);
+        if (d.status === 'MONITORING') { 
+            const ind = document.getElementById('scan-status-indicator'); 
+            if(ind){ ind.style.display = 'flex'; document.getElementById('scan-status-text').textContent = 'LIVE MONITORING'; } 
+        } else if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED'].includes(d.status)) {
+            const newCat = d.verdict.toLowerCase().includes('malicious') ? 'malicious' : (d.verdict.toLowerCase().includes('spam') ? 'spam' : 'safe');
+            const fp = d.fingerprint || d.entryId;
+            
+            ['malicious','suspicious','spam','safe'].forEach(c => {
+                window.stats[c] = window.stats[c].filter(x => (x.fingerprint || x.entryId) !== fp);
+            });
+            
+            if (window.stats[newCat]) {
+                window.stats[newCat].push(d);
+                updateDashboard(window.stats);
+            }
         }
     });
-    api.onStatusSync(en => { isProtectionEnabled = en; const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } });
+    api.onStatusSync(en => { 
+        isProtectionEnabled = en; 
+        const b = document.getElementById('scanner-toggle'); 
+        if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } 
+        const ind = document.getElementById('scan-status-indicator');
+        if(ind && !en) ind.style.display = 'none';
+    });
     api.onOutlookStatus(running => { const dot = document.getElementById('outlook-dot'), text = document.getElementById('outlook-text'); if(dot){ dot.style.background = running ? 'var(--ok)' : 'var(--danger)'; text.textContent = running ? 'OUTLOOK: CONNECTED' : 'OUTLOOK: DISCONNECTED'; } });
     api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); });
+    api.onLiveLog(msg => window.addLog(msg));
     
-    async function init() { const s = await api.getStats(); updateDashboard(s); const cfg = await api.getConfig(); if (cfg.columnWidths) colWidths = cfg.columnWidths; isProtectionEnabled = !!cfg.enabled; const b = document.getElementById('scanner-toggle'); if(b){ b.className = 'status-btn ' + (isProtectionEnabled?'on':'off'); b.textContent = isProtectionEnabled?'Turned On':'Turned Off'; } applyColWidths(); }
+    async function init() { 
+        window.addLog("Protection Center Initializing...");
+        const s = await api.getStats(); 
+        updateDashboard(s); 
+        const cfg = await api.getConfig(); 
+        if (cfg.columnWidths) colWidths = cfg.columnWidths; 
+        isProtectionEnabled = !!cfg.enabled; 
+        const b = document.getElementById('scanner-toggle'); 
+        if(b){ b.className = 'status-btn ' + (isProtectionEnabled?'on':'off'); b.textContent = isProtectionEnabled?'Turned On':'Turned Off'; } 
+        applyColWidths(); 
+    }
     init();
   </script>
 </body>
 </html>
+
