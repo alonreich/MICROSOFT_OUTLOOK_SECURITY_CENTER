@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('securityApi', {
     onOutlookStatus: callback => ipcRenderer.on('outlook-status', (event, running) => callback(running)),
     onEmailMoved: callback => ipcRenderer.on('email-moved', (event, data) => callback(data)),
     quarantineEmail: (data) => invoke('quarantine-email', data),
+    deleteEmail: (data) => invoke('delete-email', data),
+    verifyExistence: (data) => invoke('verify-existence', data),
     getForensics: (id) => invoke('get-forensics', id)
 });
 

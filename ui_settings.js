@@ -19,7 +19,7 @@ document.body.insertAdjacentHTML('beforeend', `
             <div class="section-divider" data-label="System Behavior"></div>
             <div style="display:flex; align-items:center; gap:12px; background:rgba(142, 117, 255, 0.05); padding:15px; border-radius:10px; border:1px solid var(--border);">
                 <input type="checkbox" id="launch-at-startup" style="width:18px; height:18px; cursor:pointer;">
-                <label for="launch-at-startup" style="cursor:pointer; flex:1; font-size:0.8rem; font-weight:700; color:#fff; text-transform:none; letter-spacing:0;">Start With Windows</label>
+                <label for="launch-at-startup" style="cursor:pointer; flex:1; font-size:0.8rem; font-weight:700; color:#fff; text-transform:none; letter-spacing:0;">Run Automatically When Windows Starts</label>
             </div>
 
             <div class="section-divider" data-label="Trust & Reputation Management"></div>

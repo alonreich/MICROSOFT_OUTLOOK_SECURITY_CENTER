@@ -1,0 +1,16 @@
+# PRODUCT DESCRIPTION: MICROSOFT OUTLOOK SECURITY CENTER
+
+## 1. PROJECT MISSION
+To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook that automates threat isolation while preserving privacy. It employs zero-disk forensic analysis and hardware-backed credential protection to serve users in high-risk environments without requiring Exchange Admin rights.
+
+## 2. KEY FEATURES
+- **UI:** Electron.js (Context-Isolated, Node-Integration Disabled).
+- **Backend:** 8-Core Parallel PowerShell Runspace Pool for high-speed analysis.
+- **Credential Protection:** Windows DPAPI (via Electron safeStorage).
+- **Persistence Mechanism:** 
+    - Users can opt-in to "Run Automatically When Windows Starts" via settings.
+    - This creates a registry entry in `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+    - This persistence is **user-specific** (Current User) and does not affect other users on the system.
+    - Disabling the option completely removes the registry entry for that user.
+- **Zero-Disk Forensics:** MIME data and headers are processed in-memory to ensure no sensitive data is leaked to disk.
+- **Automatic Threat Routing:** Malicious emails are deleted, spam is moved to Junk, and suspicious items are flagged for review.

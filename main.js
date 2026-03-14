@@ -30,7 +30,7 @@ const configStore = new Store({
     defaults: { 
         enabled: false, 
         vtApiKey: '', 
-        spamKeywords: ['viagra', 'lottery', 'urgent', 'bitcoin'], 
+        spamKeywords: ['viagra', 'lottery', 'urgent', 'bitcoin', 'sex', 'pussy', 'ass', 'סקס', 'תחת', 'כוס', 'זין', 'cock', 'dick', 'horny'], 
         rubrics: { 
             weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 }, 
             toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true }, 
@@ -44,7 +44,7 @@ const configStore = new Store({
 
 const dataStore = new Store({
     cwd: USER_DATA, name: 'data', clearInvalidConfig: true,
-    defaults: { processedIds: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] } }
+    defaults: { processedIds: [], releasedFingerprints: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] } }
 });
 
 let mainWindow = null, tray = null, isQuitting = false, isEnabled = !!configStore.get('enabled');
@@ -126,7 +126,17 @@ function getPsWorker() {
         buf += d.toString(); let idx = buf.indexOf('\n');
         while (idx > -1) {
             const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1); idx = buf.indexOf('\n');
-            try { const p = JSON.parse(line); if (p) broadcastToUi({ type: 'scan-update', data: p }); } catch {}
+            try { 
+                const p = JSON.parse(line); 
+                if (!p) continue;
+                if (p.type === 'store-data') {
+                    broadcastToUi(p); 
+                    continue;
+                }
+                if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'ERROR'].includes(p.status)) {
+                    broadcastToUi({ type: 'scan-update', data: p }); 
+                }
+            } catch {}
         }
     });
     return psWorker;
@@ -171,7 +181,7 @@ async function runOutlookScanner() {
     lastHeartbeat = Date.now();
     if (watchdogTimer) clearInterval(watchdogTimer);
     watchdogTimer = setInterval(() => { 
-        if (Date.now() - lastHeartbeat > 60000) { 
+        if (Date.now() - lastHeartbeat > 180000) { 
             logToFile('Watchdog: Scanner hung. Hard killing.'); 
             broadcastToUi({ type: 'outlook-status', running: false });
             if (currentScanChild) currentScanChild.kill('SIGKILL'); 
@@ -188,6 +198,7 @@ async function runOutlookScanner() {
     currentScanChild.stdin.write(JSON.stringify({ 
         mode: 'OnAccess', 
         processedIds: dataStore.get('processedIds'), 
+        releasedFingerprints: dataStore.get('releasedFingerprints'),
         spamKeywords: configStore.get('spamKeywords'), 
         rubrics: configStore.get('rubrics'), 
         whitelist: configStore.get('whitelist'), 
@@ -200,10 +211,18 @@ async function runOutlookScanner() {
         while (idx > -1) {
             const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1); idx = buf.indexOf('\n');
             try {
-                const p = JSON.parse(line); if (!p) continue; if (p.type === 'heartbeat') { 
+                const p = JSON.parse(line); if (!p) continue; 
+                if (p.type === 'heartbeat') { 
                     lastHeartbeat = Date.now(); 
                     broadcastToUi({ type: 'outlook-status', running: true });
                     continue; 
+                }
+                if (p.type === 'store-update') {
+                    if (p.key === 'releasedFingerprints') {
+                        const current = dataStore.get('releasedFingerprints') || [];
+                        if (!current.includes(p.value)) dataStore.set('releasedFingerprints', [...current, p.value].slice(-5000));
+                    }
+                    continue;
                 }
                 if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'MONITORING', 'INFO', 'ERROR'].includes(p.status)) {
                     logToFile(`Scan Event [${p.status}]: ${p.details || ''} (Sender: ${p.sender || 'N/A'}, IP: ${p.ip || 'N/A'}, Score: ${p.score || 0}%, Tier: ${p.tier || 'N/A'})`);
@@ -219,8 +238,8 @@ async function runOutlookScanner() {
                             fsPromises.writeFile(fPath, JSON.stringify({ fullHeaders: Buffer.from(p.fullHeaders || '', 'base64').toString(), body: Buffer.from(p.body || '', 'base64').toString() })).catch(() => {});
                         }
                     }
+                    broadcastToUi({ type: 'scan-update', data: p });
                 }
-                broadcastToUi({ type: 'scan-update', data: p });
             } catch {}
         }
     });
@@ -252,12 +271,16 @@ function startService() {
                         
                         if (m.key === 'enabled') { 
                             broadcastToUi({ type: 'status-sync', enabled: !!m.value, stats: dataStore.get('stats') }); 
-                            if (m.value) runOutlookScanner(); 
-                            else if (currentScanChild) currentScanChild.kill(); 
+                            if (m.value) { isScanning = false; runOutlookScanner(); }
+                            else if (currentScanChild) { currentScanChild.kill('SIGKILL'); isScanning = false; }
                         } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey'].includes(m.key)) {
                             if (configStore.get('enabled')) {
                                 logToFile(`Security policy updated (${m.key}). Restarting scanner...`);
-                                if (currentScanChild) currentScanChild.kill();
+                                if (currentScanChild) {
+                                    currentScanChild.removeAllListeners('exit');
+                                    currentScanChild.kill('SIGKILL');
+                                }
+                                isScanning = false;
                                 runOutlookScanner();
                             }
                         }
@@ -278,14 +301,15 @@ function startService() {
                             } catch {}
                             process.exit(0); 
                         } 
-                        if (['Release', 'Quarantine'].includes(m.payload)) getPsWorker().stdin.write(JSON.stringify({ action: m.payload, ...m.data }) + '\n'); 
+                        if (['Release', 'Quarantine', 'Delete', 'Check-Existence'].includes(m.payload)) {
+                            getPsWorker().stdin.write(JSON.stringify({ action: m.payload, rid: m.rid, data: m.data }) + '\n'); 
+                        }
                     }
-                } catch {}
-            }
-        });
-        s.on('close', () => activeConnections.delete(s));
-    }).listen(serviceSession.pipeName);
-    if (configStore.get('enabled')) runOutlookScanner();
+                    } catch {}
+                    }
+                    });
+                    s.on('close', () => activeConnections.delete(s));
+                    }).listen(serviceSession.pipeName);    if (configStore.get('enabled')) runOutlookScanner();
 }
 
 const reqHandlers = new Map();
@@ -332,7 +356,17 @@ function spawnService() {
 
 app.on('ready', () => {
     Menu.setApplicationMenu(null);
-    if (isServiceMode) { const h = JSON.parse(process.env.SVC_HANDSHAKE); if (h) { serviceSession = h; startService(); } }
+    if (isServiceMode) { 
+        if (process.env.SVC_HANDSHAKE && process.env.SVC_HANDSHAKE !== 'undefined') {
+            try {
+                const h = JSON.parse(process.env.SVC_HANDSHAKE); 
+                if (h) { serviceSession = h; startService(); }
+            } catch { app.quit(); }
+        } else {
+            // Service started directly without handshake, usually by scheduler
+            startService();
+        }
+    }
     else {
         if (!app.requestSingleInstanceLock()) { app.quit(); return; }
         const icon = nativeImage.createFromPath(path.join(APP_ROOT, 'tray_off.png')).resize({ width: 16, height: 16 });
@@ -402,6 +436,7 @@ ipcMain.handle('set-whitelist', (e, v) => { if (uiPipeClient) uiPipeClient.write
 ipcMain.handle('set-blacklist', (e, v) => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'blacklist', value: v }) + '\n'); return { ok: true }; });
 ipcMain.handle('save-column-widths', (e, v) => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'columnWidths', value: v }) + '\n'); return { ok: true }; });
 ipcMain.handle('set-startup', (e, v) => {
+    if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'launchAtStartup', value: v }) + '\n');
     app.setLoginItemSettings({
         openAtLogin: v,
         path: process.execPath,
@@ -411,6 +446,42 @@ ipcMain.handle('set-startup', (e, v) => {
 });
 ipcMain.handle('release-email', (e, d) => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Release', data: d }) + '\n'); return { ok: true }; });
 ipcMain.handle('quarantine-email', (e, d) => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Quarantine', data: d }) + '\n'); return { ok: true }; });
+ipcMain.handle('delete-email', (e, d) => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Delete', data: d }) + '\n'); return { ok: true }; });
+ipcMain.handle('verify-existence', async (e, d) => {
+    if (!uiPipeClient || !d.items || d.items.length === 0) return { removedCount: 0 };
+    const rid = crypto.randomBytes(8).toString('hex');
+    const probeCategory = d.items[0].category; // All items in a probe are same category
+    
+    return new Promise(resolve => {
+        const timeout = setTimeout(() => {
+            reqHandlers.delete(rid);
+            resolve({ removedCount: 0 });
+        }, 35000);
+        
+        reqHandlers.set(rid, (val) => {
+            clearTimeout(timeout);
+            if (val && val.removed && val.removed.length > 0) {
+                const currentStats = dataStore.get('stats') || { malicious: [], suspicious: [], spam: [], safe: [] };
+                const removedIds = new Set(val.removed.map(r => r.entryId));
+                
+                if (currentStats[probeCategory]) {
+                    currentStats[probeCategory] = currentStats[probeCategory].filter(i => !removedIds.has(i.entryId));
+                }
+                
+                dataStore.set('stats', currentStats);
+                broadcastToUi({ type: 'stats-update', data: { full: true, stats: currentStats } });
+                
+                // If items were MOVED (found elsewhere), they will be picked up by the next scan cycle
+                // because we didn't add their fingerprints to processedIds yet (or they are new IDs)
+                
+                resolve({ removedCount: val.removed.length });
+            } else {
+                resolve({ removedCount: 0 });
+            }
+        });
+        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Check-Existence', rid, data: d }) + '\n');
+    });
+});
 ipcMain.handle('open-logs-folder', () => shell.openPath(LOG_DIR));
 ipcMain.handle('app-reset', () => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Reset' }) + '\n'); setTimeout(() => { app.relaunch(); app.exit(); }, 1000); });
 

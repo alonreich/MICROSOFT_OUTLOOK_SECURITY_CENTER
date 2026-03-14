@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MICROSOFT OUTLOOK SECURITY CENTER</title>
   <style>
-    :root { --bg: #2b314d; --card: #363d5c; --border: #4a5278; --text: #e1e4e8; --muted: #a0a8c0; --accent: #9d85ff; --danger: #ff6e6e; --warn: #ffc382; --ok: #64ff8e; --metallic: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); --col-subject: 280px; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-score: 80px; --col-action: 150px; --col-reasoning: 300px; }
+    :root { --bg: #2b314d; --card: #363d5c; --border: #4a5278; --text: #e1e4e8; --muted: #a0a8c0; --accent: #9d85ff; --danger: #ff6e6e; --warn: #ffc382; --ok: #2d8a44; --metallic: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); --col-subject: 280px; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-score: 80px; --col-action: 150px; --col-reasoning: 300px; }
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
     .header { padding: 15px 25px; background: rgba(54, 61, 92, 0.9); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
@@ -14,13 +14,17 @@
     .status-btn { padding: 8px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-weight: 700; font-size: 0.75rem; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); color: #fff; border-bottom: 2px solid #141829; min-width: 110px; position: relative; top: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
     .status-btn:hover { top: -1px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); border-bottom-width: 3px; border-color: var(--accent); }
     .status-btn:active { top: 1px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); border-bottom-width: 1px; }
-    .status-btn.on { background: linear-gradient(180deg, #64ff8e 0%, #40c060 100%); color: #000; border-color: #40c060; border-bottom-color: #206030; }
+    .status-btn.on { background: linear-gradient(180deg, #2d8a44 0%, #1e6b30 100%); color: #fff; border-color: #1e6b30; border-bottom-color: #124a20; }
     .status-btn.off { background: linear-gradient(180deg, #ff6e6e 0%, #d04040 100%); color: #fff; border-color: #d04040; border-bottom-color: #602020; }
     .main-grid { display: grid; grid-template-columns: 220px 1fr; flex: 1; overflow: hidden; }
     .sidebar { background: #303756; border-right: 1px solid var(--border); padding: 15px; display: flex; flex-direction: column; gap: 20px; }
     .stat-card { background: linear-gradient(180deg, #3d4466 0%, #2b314d 100%); border: 1px solid rgba(255,255,255,0.05); border-bottom: 2px solid #141829; border-radius: 10px; padding: 15px; cursor: pointer; transition: all 0.1s ease-out; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 105px; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3); position: relative; top: 0; }
+    .refresh-btn { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; z-index: 10; opacity: 0.6; transition: all 0.2s; }
+    .refresh-btn:hover { opacity: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
+    .refresh-btn:active { transform: scale(0.9); background: #fff; color: var(--accent); }
+    .refresh-btn svg { width: 12px; height: 12px; fill: currentColor; }
     .stat-card:hover { top: -1px; box-shadow: 0 6px 12px rgba(0,0,0,0.4); border-color: var(--accent); }
-    .stat-card.active, .stat-card:active { top: 2px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); border-bottom-width: 1px; background: #1e233a; }
+    .stat-card.active { top: 2px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); border-bottom-width: 1px; background: #1e233a; }
     .stat-val { font-size: 1.8rem; font-weight: 700; margin-bottom: 2px; width: 100%; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
     .stat-label { font-size: 0.75rem; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; width: 100%; margin-bottom: 4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
     .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
@@ -35,6 +39,8 @@
     .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
     .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; text-align: center; }
     .log-area { background: #1e243a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; pointer-events: auto !important; }
+    .log-area ::selection { background: #ffffff !important; color: #000000 !important; }
+    .log-area *::selection { background: #ffffff !important; color: #000000 !important; }
     .log-area div { user-select: text !important; -webkit-user-select: text !important; }
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
     .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 850px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
@@ -43,7 +49,7 @@
     .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; top: -1px; border-bottom-width: 3px; }
     .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); top: 1px; border-bottom-width: 1px; }
     .btn-ui:active { top: 1px; border-bottom-width: 1px; }
-    .btn-ui.success { background: linear-gradient(180deg, #40c060 0%, #206030 100%); color: #fff; border-color: #40c060; }
+    .btn-ui.success { background: linear-gradient(180deg, #1e6b30 0%, #124a20 100%); color: #fff; border-color: #1e6b30; }
     .btn-ui.danger { background: linear-gradient(180deg, #d04040 0%, #602020 100%); color: #fff; border-color: #d04040; }
     
     .setting-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px; }
@@ -58,9 +64,9 @@
     .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); top: -1px; border-bottom-width: 2px; }
     .btn-step:active:not(:disabled) { top: 1px; border-bottom-width: 1px; }
     .btn-step:disabled { opacity: 0.3; cursor: not-allowed; }
-    .context-menu { position: fixed; background: #1c2135; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; z-index: 2000; overflow: hidden; min-width: 250px; }
-    .context-menu-item { padding: 12px 20px; font-size: 0.75rem; cursor: pointer; font-weight: 600; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .context-menu-item:hover { background: var(--accent); color: #fff; }
+    .context-menu { position: fixed; background: #2d3450; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); display: none; z-index: 5000; overflow: hidden; min-width: 200px; }
+    .context-menu-item { padding: 12px 20px; font-size: 0.8rem; cursor: pointer; font-weight: 700; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .context-menu-item:hover { background: rgb(80, 80, 80); color: #fff; }
     #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
     #tooltip { position: fixed; background: #1c2135; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; color: #fff; width: 350px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 3000; pointer-events: none; }
     @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(142, 117, 255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0); } }
@@ -70,6 +76,9 @@
 <body>
   <div id="toast">COPIED TO CLIPBOARD</div>
   <div id="tooltip"></div>
+  <div id="log-ctx-menu" class="context-menu" style="min-width: 150px;">
+    <div class="context-menu-item" id="ctx-log-copy" style="color: var(--accent);">Copy Selection</div>
+  </div>
   <header class="header">
     <div class="logo"><svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg> MICROSOFT OUTLOOK <span>SECURITY CENTER</span></div>
     <div style="display:flex; gap:15px; align-items:center;">
@@ -89,9 +98,9 @@
   </header>
   <div class="main-grid">
     <aside class="sidebar">
-        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Critical Threats Blocked</div></div>
-        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Flagged for Review</div></div>
-        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Quarantined to Junk</div></div>
+        <div id="card-malicious" class="stat-card active"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('malicious')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Critical Threats Blocked</div></div>
+        <div id="card-suspicious" class="stat-card"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('suspicious')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Flagged for Review</div></div>
+        <div id="card-spam" class="stat-card"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('spam')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Quarantined to Junk</div></div>
         <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Inbox / Trusted Senders</div></div>
         <div style="flex:1"></div>
         <button id="show-logs-btn" class="btn-ui" style="width:100%; justify-content:center;">OPEN LOGS</button>
@@ -170,7 +179,7 @@
         }
     })();
     
-    function updateDashboard(data) { 
+    window.updateDashboard = function(data) { 
         if (!data) return; 
         let populatedCat = null, populatedCount = 0;
         for (const cat in data) { 
@@ -195,6 +204,31 @@
     
     window.copyToClipboard = (text) => { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const t = document.getElementById('toast'); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2000); };
     
+    (function() {
+        const logArea = document.getElementById('log-container');
+        const logMenu = document.getElementById('log-ctx-menu');
+        
+        logArea.oncontextmenu = (e) => {
+            const sel = window.getSelection().toString();
+            if (sel) {
+                e.preventDefault();
+                logMenu.style.display = 'block';
+                logMenu.style.left = e.pageX + 'px';
+                logMenu.style.top = e.pageY + 'px';
+            }
+        };
+
+        document.getElementById('ctx-log-copy').onclick = () => {
+            const sel = window.getSelection().toString();
+            if (sel) window.copyToClipboard(sel);
+            logMenu.style.display = 'none';
+        };
+
+        document.addEventListener('mousedown', (e) => {
+            if (!logMenu.contains(e.target)) logMenu.style.display = 'none';
+        });
+    })();
+
     document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
     document.getElementById('scanner-toggle').onclick = async () => { 
         const targetState = !isProtectionEnabled;
