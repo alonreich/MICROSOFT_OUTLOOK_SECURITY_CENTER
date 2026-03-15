@@ -1,54 +1,74 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MICROSOFT OUTLOOK SECURITY CENTER</title>
   <style>
-    :root { --bg: #2b314d; --card: #363d5c; --border: #4a5278; --text: #e1e4e8; --muted: #a0a8c0; --accent: #9d85ff; --danger: #ff6e6e; --warn: #ffc382; --ok: #2d8a44; --metallic: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); --col-subject: 280px; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-score: 80px; --col-action: 150px; --col-reasoning: 300px; }
+    :root { --bg: #2b314d; --card: #363d5c; --border: #4a5278; --text: #e1e4e8; --muted: #a0a8c0; --accent: #9d85ff; --danger: #ff6e6e; --warn: #ffc382; --ok: #2d8a44; --metallic: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); --col-check: 40px; --col-subject: 280px; --col-date: 100px; --col-time: 80px; --col-ip: 120px; --col-verdict: 100px; --col-score: 80px; --col-action: 150px; --col-reasoning: 300px; }
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+    
     .header { padding: 15px 25px; background: rgba(54, 61, 92, 0.9); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
     .logo { font-weight: 700; letter-spacing: 1px; font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 12px; }
     .logo span { color: var(--accent); }
-    .status-btn { padding: 8px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-weight: 700; font-size: 0.75rem; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); color: #fff; border-bottom: 2px solid #141829; min-width: 110px; position: relative; top: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-    .status-btn:hover { top: -1px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); border-bottom-width: 3px; border-color: var(--accent); }
-    .status-btn:active { top: 1px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); border-bottom-width: 1px; }
-    .status-btn.on { background: linear-gradient(180deg, #2d8a44 0%, #1e6b30 100%); color: #fff; border-color: #1e6b30; border-bottom-color: #124a20; }
-    .status-btn.off { background: linear-gradient(180deg, #ff6e6e 0%, #d04040 100%); color: #fff; border-color: #d04040; border-bottom-color: #602020; }
+    
+    .shield-container { display: flex; align-items: center; gap: 15px; cursor: pointer; padding: 5px 15px; border-radius: 12px; transition: all 0.2s; border: 1px solid transparent; }
+    .shield-container:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+    .shield-icon { width: 40px; height: 40px; position: relative; display: flex; align-items: center; justify-content: center; }
+    .shield-icon svg { width: 32px; height: 32px; filter: drop-shadow(0 0 5px rgba(0,0,0,0.5)); transition: all 0.3s; }
+    .shield-status { display: flex; flex-direction: column; }
+    .shield-label { font-size: 0.6rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    .shield-text { font-size: 0.9rem; font-weight: 800; color: #fff; }
+    
+    .status-active svg { fill: #2d8a44; filter: drop-shadow(0 0 8px rgba(45, 138, 68, 0.6)); }
+    .status-paused svg { fill: #ffc382; filter: drop-shadow(0 0 8px rgba(255, 195, 130, 0.6)); }
+    .status-error svg { fill: #ff6e6e; filter: drop-shadow(0 0 8px rgba(255, 110, 110, 0.6)); }
+    .status-loading svg { animation: shield-pulse 1.5s infinite; fill: var(--accent); }
+    @keyframes shield-pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.92); } 100% { opacity: 1; transform: scale(1); } }
+
+    .tabs-header { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+    .tab-btn { padding: 10px 20px; background: transparent; border: none; color: var(--muted); font-weight: 800; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: rgba(157, 133, 255, 0.05); }
+    .tab-content { display: none; flex: 1; overflow-y: auto; padding-right: 10px; }
+    .tab-content.active { display: block; }
+
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 20px; opacity: 0.6; }
+    .empty-icon { width: 80px; height: 80px; fill: var(--border); }
+    .empty-text { font-size: 1rem; font-weight: 700; letter-spacing: 1px; }
+
     .main-grid { display: grid; grid-template-columns: 220px 1fr; flex: 1; overflow: hidden; }
     .sidebar { background: #303756; border-right: 1px solid var(--border); padding: 15px; display: flex; flex-direction: column; gap: 20px; }
-    .stat-card { background: linear-gradient(180deg, #3d4466 0%, #2b314d 100%); border: 1px solid rgba(255,255,255,0.05); border-bottom: 2px solid #141829; border-radius: 10px; padding: 15px; cursor: pointer; transition: all 0.1s ease-out; display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 105px; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3); position: relative; top: 0; }
-    .refresh-btn { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; z-index: 10; opacity: 0.6; transition: all 0.2s; }
-    .refresh-btn:hover { opacity: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
-    .refresh-btn:active { transform: scale(0.9); background: #fff; color: var(--accent); }
-    .refresh-btn svg { width: 12px; height: 12px; fill: currentColor; }
-    .stat-card:hover { top: -1px; box-shadow: 0 6px 12px rgba(0,0,0,0.4); border-color: var(--accent); }
-    .stat-card.active { top: 2px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); border-bottom-width: 1px; background: #1e233a; }
+    .stat-card { background: linear-gradient(180deg, #3d4466 0%, #2b314d 100%); border: 1px solid rgba(255,255,255,0.05); border-bottom: 2px solid #141829; border-radius: 10px; padding: 15px; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; align-items: center; text-align: center; min-height: 105px; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3); position: relative; }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.4); border-color: var(--accent); }
+    .stat-card.active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); border-bottom-width: 1px; background: #1e233a; }
     .stat-val { font-size: 1.8rem; font-weight: 700; margin-bottom: 2px; width: 100%; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
     .stat-label { font-size: 0.75rem; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; width: 100%; margin-bottom: 4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
     .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
     .table-container { background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex: 1; overflow-y: hidden; overflow-x: auto; display: flex; flex-direction: column; }
-    .table-header { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 0 20px; background: rgba(0,0,0,0.3); font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); height: 40px; align-items: center; position: relative; width: max-content; min-width: 100%; }
+    .table-header { display: grid; grid-template-columns: var(--col-check) var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 0 20px; background: rgba(0,0,0,0.3); font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); height: 40px; align-items: center; position: relative; width: max-content; min-width: 100%; }
     .table-header > div { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid rgba(255,255,255,0.05); text-align: center; }
     .resizer { position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: col-resize; z-index: 10; }
     .resizer:hover { background: var(--accent); opacity: 0.5; }
     .table-list { flex: 1; overflow-y: auto; width: max-content; min-width: 100%; }
-    .list-item { display: grid; grid-template-columns: var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; align-items: center; width: max-content; min-width: 100%; }
+    .list-item { display: grid; grid-template-columns: var(--col-check) var(--col-subject) var(--col-date) var(--col-time) var(--col-ip) var(--col-verdict) var(--col-score) var(--col-action) var(--col-reasoning); padding: 12px 20px; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; align-items: center; width: max-content; min-width: 100%; }
     .list-item:hover { background: rgba(142, 117, 255, 0.05); }
     .list-item.selected { background: rgba(142, 117, 255, 0.15); border-left: 3px solid var(--accent); }
     .list-item div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; text-align: center; }
-    .log-area { background: #1e243a; border: 1px solid var(--border); height: 150px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; pointer-events: auto !important; }
-    .log-area ::selection { background: #ffffff !important; color: #000000 !important; }
-    .log-area *::selection { background: #ffffff !important; color: #000000 !important; }
+    .log-area { display: none; background: #1e243a; border: 1px solid var(--border); height: 250px; border-radius: 10px; font-family: 'Consolas', monospace; padding: 10px; font-size: 0.75rem; overflow-y: auto; color: #a9e1ff; line-height: 1.4; user-select: text !important; -webkit-user-select: text !important; cursor: text; pointer-events: auto !important; }
     .log-area div { user-select: text !important; -webkit-user-select: text !important; }
+    
+    #duplicate-header, #duplicate-list .list-item { display: grid; grid-template-columns: 40px 350px 250px 150px 100px 150px 1fr !important; }
+    #duplicate-list .list-item div { padding: 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
     .modal-content { background: var(--bg); border: 1px solid var(--accent); width: 850px; max-height: 90vh; border-radius: 15px; display: flex; flex-direction: column; padding: 25px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
     .modal-header { font-weight: 700; font-size: 1.1rem; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); text-align: center; color: #fff; letter-spacing: 1px; }
-    .btn-ui { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 0 15px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.1s; min-width: fit-content; position: relative; top: 0; border-bottom: 2px solid #141829; }
-    .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; top: -1px; border-bottom-width: 3px; }
-    .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); top: 1px; border-bottom-width: 1px; }
-    .btn-ui:active { top: 1px; border-bottom-width: 1px; }
+    .btn-ui { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 0 15px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); min-width: fit-content; position: relative; border-bottom: 2px solid #141829; }
+    .btn-ui:hover { border-color: var(--accent); background: #3d445d; color: #fff; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .btn-ui.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 10px rgba(142, 117, 255, 0.4); transform: translateY(1px); border-bottom-width: 1px; }
+    .btn-ui:active { transform: translateY(1px); border-bottom-width: 1px; }
     .btn-ui.success { background: linear-gradient(180deg, #1e6b30 0%, #124a20 100%); color: #fff; border-color: #1e6b30; }
     .btn-ui.danger { background: linear-gradient(180deg, #d04040 0%, #602020 100%); color: #fff; border-color: #d04040; }
     
@@ -60,55 +80,386 @@
     .section-divider { height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin: 25px 0; position: relative; }
     .section-divider::after { content: attr(data-label); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg); padding: 0 15px; font-size: 0.6rem; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
 
-    .btn-step { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); width: auto; min-width: 16px; height: 16px; border-radius: 3px; cursor: pointer; font-size: 0.4rem; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; top: 0; border-bottom: 1px solid #141829; transition: all 0.1s; padding: 0 4px; }
-    .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); top: -1px; border-bottom-width: 2px; }
-    .btn-step:active:not(:disabled) { top: 1px; border-bottom-width: 1px; }
+    .btn-step { background: linear-gradient(180deg, #4a5278 0%, #363d5c 100%); border: 1px solid rgba(255,255,255,0.1); color: var(--text); width: auto; min-width: 16px; height: 16px; border-radius: 3px; cursor: pointer; font-size: 0.4rem; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; border-bottom: 1px solid #141829; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); padding: 0 4px; }
+    .btn-step:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); transform: translateY(-1px); }
+    .btn-step:active:not(:disabled) { transform: translateY(1px); }
     .btn-step:disabled { opacity: 0.3; cursor: not-allowed; }
     .context-menu { position: fixed; background: #2d3450; border: 1px solid var(--accent); border-radius: 8px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); display: none; z-index: 5000; overflow: hidden; min-width: 200px; }
     .context-menu-item { padding: 12px 20px; font-size: 0.8rem; cursor: pointer; font-weight: 700; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .context-menu-item:hover { background: rgb(80, 80, 80); color: #fff; }
-    #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 10px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 4000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
+    #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 12px 30px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; z-index: 9999; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5); border: 2px solid rgba(0,0,0,0.2); transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
     #tooltip { position: fixed; background: #1c2135; border: 1px solid var(--accent); padding: 15px; border-radius: 10px; font-size: 0.75rem; color: #fff; width: 350px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 3000; pointer-events: none; }
     @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(142, 117, 255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(142, 117, 255, 0); } }
     .pulse { animation: pulse 2s infinite; }
+
+    #activity-bar { height: 24px; background: #1e233a; border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; gap: 10px; font-size: 0.65rem; font-weight: 700; color: var(--muted); }
+    .activity-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: activity-pulse 1s infinite; }
+    @keyframes activity-pulse { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
   </style>
 </head>
 <body>
-  <div id="toast">COPIED TO CLIPBOARD</div>
+  <div id="toast">SYSTEM NOTIFICATION</div>
   <div id="tooltip"></div>
+
+  <!-- CONTEXT MENUS -->
   <div id="log-ctx-menu" class="context-menu" style="min-width: 150px;">
     <div class="context-menu-item" id="ctx-log-copy" style="color: var(--accent);">Copy Selection</div>
   </div>
+  <div id="ctx-menu" class="context-menu">
+      <div id="ctx-safe-options" style="display:none">
+          <div class="context-menu-item" id="ctx-spam-sender" style="color:var(--danger)">Mark as SPAM: Only This Email Sender</div>
+          <div class="context-menu-item" id="ctx-spam-domain" style="color:var(--danger)">Mark as SPAM: Only This Domain</div>
+          <div class="context-menu-item" id="ctx-spam-ip" style="color:var(--danger)">Mark as SPAM: Only This IP Address</div>
+          <div class="context-menu-item" id="ctx-spam-combo" style="color:var(--danger)">Mark as SPAM: Domain & IP Address Combination</div>
+      </div>
+      <div id="ctx-danger-options" style="display:none">
+          <div class="context-menu-item" id="ctx-safe-sender" style="color:var(--ok)">Mark as SAFE: Only This Email Sender</div>
+          <div class="context-menu-item" id="ctx-safe-domain" style="color:var(--ok)">Mark as SAFE: Only This Domain</div>
+          <div class="context-menu-item" id="ctx-safe-ip" style="color:var(--ok)">Mark as SAFE: Only This IP Address</div>
+          <div class="context-menu-item" id="ctx-safe-combo" style="color:var(--ok)">Mark as SAFE: Domain & IP Address Combination</div>
+          <div class="context-menu-item" id="ctx-delete-email" style="color:red; border-top: 1px solid rgba(255,255,255,0.1);">Delete This Email</div>
+      </div>
+  </div>
+
+  <!-- MODALS -->
+  <div id="audit-logs-modal" class="modal">
+      <div class="modal-content" style="width: 1000px; height: 80vh;">
+          <div class="modal-header">SYSTEM AUDIT & SECURITY LOGS</div>
+          <div id="modal-log-container" class="log-area" style="display:block; flex:1;"></div>
+          <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;">
+              <button id="clear-logs-btn" class="btn-ui">CLEAR DISPLAY</button>
+              <button id="open-logs-folder-btn" class="btn-ui">OPEN LOGS FOLDER</button>
+              <button id="close-audit-logs" class="btn-ui danger">CLOSE</button>
+          </div>
+      </div>
+  </div>
+
+  <div id="custom-confirm-modal" class="modal" style="z-index: 9999;">
+      <div class="modal-content" style="width: 400px; text-align: center; border-color: var(--danger);">
+          <div class="modal-header" id="confirm-modal-title" style="color: var(--danger);">WARNING</div>
+          <div id="confirm-modal-msg" style="margin-bottom: 20px; font-size: 0.85rem; line-height: 1.5; color: #fff;"></div>
+          <div style="display: flex; gap: 10px; justify-content: center;">
+              <button id="confirm-modal-yes" class="btn-ui danger">PROCEED</button>
+              <button id="confirm-modal-no" class="btn-ui">CANCEL</button>
+          </div>
+      </div>
+  </div>
+
+  <div id="forensic-modal" class="modal">
+      <div class="modal-content" style="width: 1200px; font-family: Arial, sans-serif; font-size: 11pt;">
+          <div class="modal-header">EMAIL FORENSIC DETAILS</div>
+          <div id="forensic-fields" style="display: flex; flex-direction: column; gap: 0; padding: 10px;"></div>
+          <div style="margin-top: 30px; display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; padding-top: 20px; border-top: 1px solid var(--border);">
+              <button id="forensic-rfc" class="btn-ui">SHOW EMAIL HEADERS (RFC822)</button>
+              <button id="forensic-read" class="btn-ui"><svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg>&nbsp;&nbsp;READ EMAIL CONTENT&nbsp;&nbsp;<svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M20,8L12,13L4,8V6L12,11L20,6M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C22,4.89 21.1,4 20,4Z" /></svg></button>
+              <button id="forensic-prev" class="btn-ui">PREVIOUS <<</button><button id="forensic-next" class="btn-ui">NEXT >></button><button id="forensic-close" class="btn-ui danger">CLOSE</button>
+          </div>
+      </div>
+  </div>
+
+  <div id="duplicate-modal" class="modal">
+      <div class="modal-content" style="width: 1400px; height: 90vh;">
+          <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 0 20px 15px 20px;">
+              <div style="display: flex; align-items: center; gap: 15px;">
+                  <svg style="width:24px;height:24px;fill:var(--accent)" viewBox="0 0 24 24"><path d="M15,14H13V11H11V14H9L12,17L15,14M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09V15.91L12,19.85L19,15.91V8.09L12,4.15Z" /></svg>
+                  DUPLICATE EMAIL DETECTION & CLEANUP
+              </div>
+              <div style="display: flex; gap: 10px;">
+                  <button id="scan-duplicates-btn" class="btn-ui success">SCAN MAILBOX</button>
+                  <button id="pause-duplicates-btn" class="btn-ui" style="display:none; width:100px;">PAUSE</button>
+                  <button id="delete-duplicates-btn" class="btn-ui danger" disabled style="opacity: 0.5;">DELETE SELECTED</button>
+                  <button id="close-duplicate-modal" class="btn-ui">CLOSE</button>
+              </div>
+          </div>
+
+          <div id="duplicate-progress-card" style="display:none; background: rgba(142, 117, 255, 0.05); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">
+                  <div>
+                      <div id="dup-progress-folder" style="font-size: 0.7rem; font-weight: 900; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">INITIALIZING ENGINE...</div>
+                      <div id="dup-progress-item" style="font-size: 0.85rem; font-weight: 600; color: #fff; width: 600px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Please wait while we connect to Outlook...</div>
+                  </div>
+                  <div style="text-align: right;">
+                      <div style="font-size: 0.65rem; font-weight: 800; color: var(--muted); text-transform: uppercase;">Discovery Stats</div>
+                      <div style="font-size: 1.1rem; font-weight: 900; color: #fff;"><span id="dup-stat-found" style="color:var(--danger)">0</span> / <span id="dup-stat-scanned">0</span> <span style="font-size:0.7rem; color:var(--muted); font-weight:600;">EMAILS</span></div>
+                  </div>
+              </div>
+              <div style="height: 6px; background: rgba(0,0,0,0.3); border-radius: 3px; overflow: hidden;">
+                  <div id="dup-progress-bar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s ease;"></div>
+              </div>
+          </div>
+
+          <div id="duplicate-log" class="log-area" style="display:none; height: 100px; margin-bottom: 20px; border-color: var(--accent); background: rgba(0,0,0,0.4); font-size: 0.65rem;"></div>
+
+          <div class="table-container" style="flex: 1;">
+              <div class="table-header" id="duplicate-header">
+                  <div class="col-check"><input type="checkbox" id="check-all-duplicates"></div>
+                  <div style="width: 350px;">Subject</div>
+                  <div style="width: 250px;">Sender</div>
+                  <div style="width: 150px;">Timestamp</div>
+                  <div style="width: 100px;">Size</div>
+                  <div style="width: 150px;">Location</div>
+                  <div style="flex: 1;">Reasoning</div>
+              </div>
+              <div id="duplicate-list" class="table-list">
+                  <div class="empty-state">
+                      <svg class="empty-icon" viewBox="0 0 24 24"><path d="M15,14H13V11H11V14H9L12,17L15,14M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09V15.91L12,19.85L19,15.91V8.09L12,4.15Z" /></svg>
+                      <div class="empty-text">START SCAN TO FIND REDUNDANT COPIES</div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <div id="sensitivity-modal" class="modal">
+      <div class="modal-content" style="width: 650px;">
+          <div class="modal-header">ANTI-SPAM ENGINES</div>
+          <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; padding: 10px; overflow-y: auto;"></div>
+          <div style="margin-top: 20px; padding: 15px; border-top: 2px solid var(--border); background: rgba(142, 117, 255, 0.05); border-radius: 10px;">
+              <div style="text-align: center; margin-bottom: 10px;"><div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div></div>
+              <div style="display: flex; align-items: center; gap: 15px;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div><input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div></div>
+              <div style="text-align: center; margin-top: 10px;"><span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span><div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div></div>
+          </div>
+          <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;"><button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button><button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button><button id="close-sensitivity" class="btn-ui danger">CANCEL</button></div>
+      </div>
+  </div>
+
+  <div id="settings-modal" class="modal">
+      <div class="modal-content" style="width: 950px; height: 85vh;">
+          <div class="modal-header" style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+              <svg style="width:24px;height:24px;fill:var(--accent)" viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,5.9C16.04,5.53 15.48,5.22 14.87,5.03L14.5,2.35C14.46,2.12 14.27,1.95 14.04,1.95H10.04C9.81,1.95 9.62,2.12 9.58,2.35L9.21,5.03C8.6,5.22 8.04,5.53 7.52,5.9L5.03,5.05C4.81,4.97 4.54,5.05 4.42,5.27L2.42,8.73C2.3,8.95 2.35,9.22 2.54,9.37L4.65,11.03C4.61,11.35 4.58,11.67 4.58,12C4.58,12.33 4.61,12.65 4.65,12.97L2.54,14.63C2.35,14.78 2.3,15.05 2.42,15.27L4.42,18.73C4.54,18.95 4.81,19.03 5.03,18.95L7.52,18.1C8.04,18.47 8.6,18.78 9.21,18.97L9.58,21.65C9.62,21.88 9.81,22.05 10.04,22.05H14.04C14.27,22.05 14.46,21.88 14.5,21.65L14.87,18.97C15.48,18.78 16.04,18.47 16.56,18.1L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+              SYSTEM CONFIGURATION & SECURITY POLICY
+          </div>
+          
+          <div class="tabs-header">
+              <button class="tab-btn active" data-tab="tab-general">General</button>
+              <button class="tab-btn" data-tab="tab-intelligence">Intelligence</button>
+              <button class="tab-btn" data-tab="tab-lists">Trusted Lists</button>
+              <button class="tab-btn" data-tab="tab-content">Content</button>
+              <button class="tab-btn" data-tab="tab-maintenance" style="color:var(--danger)">Maintenance</button>
+          </div>
+
+          <div id="tab-general" class="tab-content active">
+              <div class="section-divider" data-label="Performance Control"></div>
+              <div class="setting-group" style="background: rgba(142, 117, 255, 0.05); padding: 15px; border-radius: 10px; border: 1px solid var(--border);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                      <label style="color: #fff; font-size: 0.85rem;"><svg style="width:16px;height:16px;fill:var(--accent)" viewBox="0 0 24 24"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>Scanning Speed:</label>
+                      <button id="reset-performance-btn" class="btn-step" style="font-size:0.6rem; padding:4px 8px;">RESET PERFORMANCE</button>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 15px;">
+                      <span style="font-size: 0.7rem; font-weight: 800; color: var(--muted);">RELAXED</span>
+                      <input type="range" id="scanning-speed-slider" min="1" max="100" value="50" style="flex: 1; cursor: pointer;">
+                      <span style="font-size: 0.7rem; font-weight: 800; color: var(--accent);">AGGRESSIVE</span>
+                  </div>
+                  <div style="text-align: center; margin-top: 10px;">
+                      <span id="scanning-speed-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span>
+                      <div style="font-size: 0.65rem; color: var(--muted);">Controls how fast the engine checks each email. Higher speed uses more resources.</div>
+                  </div>
+              </div>
+
+              <div class="section-divider" data-label="System Behavior"></div>
+              <div style="display:flex; align-items:center; gap:12px; background:rgba(142, 117, 255, 0.05); padding:15px; border-radius:10px; border:1px solid var(--border);">
+                  <input type="checkbox" id="launch-at-startup" style="width:18px; height:18px; cursor:pointer;">
+                  <label for="launch-at-startup" style="cursor:pointer; flex:1; font-size:0.8rem; font-weight:700; color:#fff; text-transform:none; letter-spacing:0;">Run Automatically When Windows Starts</label>
+              </div>
+          </div>
+
+          <div id="tab-intelligence" class="tab-content">
+              <div class="section-divider" data-label="External Intelligence"></div>
+              <div class="setting-group">
+                  <label><svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M7,14L12,19L17,14H14V5H10V14H7Z" /></svg>VirusTotal Enterprise API Key <svg style="width:12px;height:12px;fill:var(--ok);cursor:help;" viewBox="0 0 24 24" title="Hardware Protected by Windows DPAPI"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,7.3 16,8V11C16,14 14.3,16.7 12,18C9.7,16.7 8,14 8,11V8C9.2,7.3 10.6,7 12,7Z" /></svg></label>
+                  <div style="position:relative">
+                      <input type="password" id="vt-api-key" placeholder="Enter your 64-character API key..." style="width:100%; padding-right:40px;">
+                      <div id="toggle-vt-visibility" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--muted);"><svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" /></svg></div>
+                  </div>
+                  <div style="font-size:0.6rem; color:var(--muted); margin-top:5px; font-style:italic;">Used for real-time IP reputation and attachment analysis.</div>
+              </div>
+          </div>
+
+          <div id="tab-lists" class="tab-content">
+              <div class="section-divider" data-label="Trust & Reputation Management"></div>
+              <div class="setting-grid">
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--ok)" viewBox="0 0 24 24"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" /></svg>Trusted Senders (Emails)</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="wl-emails" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="wl-emails" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="wl-emails" placeholder="One per line..." style="height:150px;"></textarea>
+                  </div>
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--danger)" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" /></svg>Blocked Senders (Emails)</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="bl-emails" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="bl-emails" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="bl-emails" placeholder="One per line..." style="height:150px;"></textarea>
+                  </div>
+              </div>
+              <div class="setting-grid">
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--ok)" viewBox="0 0 24 24"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" /></svg>Trusted IP Addresses</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="wl-ips" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="wl-ips" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="wl-ips" placeholder="One per line..." style="height:150px;"></textarea>
+                  </div>
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--danger)" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" /></svg>Blocked IP Addresses</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="bl-ips" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="bl-ips" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="bl-ips" placeholder="One per line..." style="height:150px;"></textarea>
+                  </div>
+              </div>
+              <div class="setting-grid">
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--ok)" viewBox="0 0 24 24"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" /></svg>Trusted Domains</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="wl-domains" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="wl-domains" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="wl-domains" placeholder="example.com (One per line)..." style="height:150px;"></textarea>
+                  </div>
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--danger)" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" /></svg>Blocked Domains</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="bl-domains" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="bl-domains" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="bl-domains" placeholder="example.com (One per line)..." style="height:150px;"></textarea>
+                  </div>
+              </div>
+              <div class="setting-grid">
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--ok)" viewBox="0 0 24 24"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" /></svg>Trusted IP+Domain Combos</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="wl-combos" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="wl-combos" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="wl-combos" placeholder="IP|Domain (One per line)..." style="height:150px;"></textarea>
+                  </div>
+                  <div class="setting-group">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                          <label><svg style="width:14px;height:14px;fill:var(--danger)" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" /></svg>Blocked IP+Domain Combos</label>
+                          <div style="display:flex; gap:4px;">
+                              <button class="btn-step csv-io" data-action="import" data-target="bl-combos" style="font-size:0.5rem; padding:2px 4px;">IMP</button>
+                              <button class="btn-step csv-io" data-action="export" data-target="bl-combos" style="font-size:0.5rem; padding:2px 4px;">EXP</button>
+                          </div>
+                      </div>
+                      <textarea id="bl-combos" placeholder="IP|Domain (One per line)..." style="height:150px;"></textarea>
+                  </div>
+              </div>
+          </div>
+
+          <div id="tab-content" class="tab-content">
+              <div class="section-divider" data-label="Content Filtering"></div>
+              <div class="setting-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <label><svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,15.73 4,12C4,8.27 7.59,4 12,4C16.41,4 20,8.27 20,12C20,15.73 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z" /></svg>Global Spam Keywords</label>
+                      <div style="display:flex; gap:8px;">
+                          <input type="file" id="import-keywords-input" accept=".csv,.txt" style="display:none">
+                          <button id="import-keywords-btn" class="btn-step" style="font-size:0.6rem; padding:4px 8px; height:auto; width:auto;">IMPORT CSV</button>
+                          <button id="export-keywords-btn" class="btn-step" style="font-size:0.6rem; padding:4px 8px; height:auto; width:auto;">EXPORT CSV</button>
+                      </div>
+                  </div>
+                  <textarea id="spam-keywords" placeholder="Enter keywords to flag as spam (one per line)..." style="height:350px;"></textarea>
+                  <div style="font-size:0.6rem; color:var(--muted); margin-top:5px; font-style:italic;">Case-insensitive matching in subject and body.</div>
+              </div>
+          </div>
+
+          <div id="tab-maintenance" class="tab-content">
+              <div class="section-divider" data-label="Backup & Portability"></div>
+              <div style="display:flex; justify-content: center; gap:15px; background: rgba(142, 117, 255, 0.05); padding: 20px; border-radius: 10px; border: 1px solid var(--border);">
+                  <button id="export-app-config" class="btn-ui" style="font-size:0.7rem;">EXPORT FULL CONFIGURATION</button>
+                  <button id="import-app-config" class="btn-ui" style="font-size:0.7rem;">IMPORT FULL CONFIGURATION</button>
+              </div>
+
+              <div class="section-divider" data-label="Advanced Maintenance"></div>
+              <div style="display:flex; justify-content: center; gap:15px; background: rgba(142, 117, 255, 0.05); padding: 20px; border-radius: 10px; border: 1px solid var(--border);">
+                  <button id="duplicate-detection-btn" class="btn-ui" style="font-size:0.7rem; border-color: var(--accent);">DUPLICATE EMAIL DETECTION</button>
+              </div>
+
+              <div class="section-divider" data-label="Danger Zone"></div>
+              <div style="background: rgba(208, 64, 64, 0.05); padding: 25px; border-radius: 10px; border: 2px dashed #d04040; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="max-width: 60%;">
+                      <div style="font-size: 1rem; font-weight: 800; color: #ff6e6e; margin-bottom: 5px;">FACTORY RESET</div>
+                      <div style="font-size: 0.75rem; color: var(--muted); line-height: 1.4;">This will PERMANENTLY WIPE all security logs, custom configurations, trusted lists, and forensic data. The application will restart in factory state.</div>
+                  </div>
+                  <button id="reset-btn" class="btn-ui danger" style="height: 50px; padding: 0 30px;">FACTORY RESET</button>
+              </div>
+          </div>
+
+          <div style="display:flex; justify-content: center; gap:20px; padding-top:15px; margin-top:15px; border-top:1px solid var(--border);">
+              <button id="save-settings" class="btn-ui success" style="width:180px; height:45px; font-size:0.9rem;">SAVE CHANGES</button>
+              <button id="close-settings" class="btn-ui danger" style="width:180px; height:45px; font-size:0.9rem;">DISCARD</button>
+          </div>
+      </div>
+  </div>
+
   <header class="header">
     <div class="logo"><svg style="width:24px; height:24px; fill:var(--accent);" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg> MICROSOFT OUTLOOK <span>SECURITY CENTER</span></div>
-    <div style="display:flex; gap:15px; align-items:center;">
-        <div id="scan-status-indicator" style="display:none; align-items:center; gap:8px; background: rgba(142, 117, 255, 0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(142, 117, 255, 0.3);">
-            <div id="scan-status-dot" style="width:10px; height:10px; border-radius:50%; background:var(--accent);"></div>
-            <span id="scan-status-text" style="font-size:0.65rem; font-weight:900; color:var(--accent);">INITIALIZING...</span>
+    
+    <div id="shield-toggle" class="shield-container status-paused">
+        <div class="shield-icon">
+            <svg viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
         </div>
+        <div class="shield-status">
+            <span class="shield-label">System Protection</span>
+            <span id="shield-text" class="shield-text">PAUSED</span>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:12px; align-items:center;">
         <div id="outlook-indicator" style="display:flex; align-items:center; gap:8px; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);">
             <div id="outlook-dot" style="width:10px; height:10px; border-radius:50%; background:var(--danger);"></div>
             <span id="outlook-text" style="font-size:0.65rem; font-weight:900; color:var(--muted);">OUTLOOK: DISCONNECTED</span>
         </div>
-        <button id="history-toggle" class="btn-ui">HISTORY SCAN</button>
-        <button id="sensitivity-btn" class="btn-ui">ANTI-SPAM ENGINES</button>
+        <button id="history-toggle" class="btn-ui">FULL MAILBOX SCAN</button>
+        <button id="sensitivity-btn" class="btn-ui">ANALYSIS HEURISTICS</button>
         <button id="settings-btn" class="btn-ui">SETTINGS</button>
-        <button id="scanner-toggle" class="status-btn off">Turned Off</button>
     </div>
   </header>
+
   <div class="main-grid">
     <aside class="sidebar">
-        <div id="card-malicious" class="stat-card active"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('malicious')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Critical Threats Blocked</div></div>
-        <div id="card-suspicious" class="stat-card"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('suspicious')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Flagged for Review</div></div>
-        <div id="card-spam" class="stat-card"><button class="refresh-btn" title="Probe Outlook Verification" onclick="event.stopPropagation(); window.probeFolder('spam')"><svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></button><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Quarantined to Junk</div></div>
+        <div id="card-malicious" class="stat-card active"><div class="stat-label">Malicious</div><div id="count-malicious" class="stat-val" style="color:var(--danger)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Critical Threats Blocked</div></div>
+        <div id="card-suspicious" class="stat-card"><div class="stat-label">Suspicious</div><div id="count-suspicious" class="stat-val" style="color:var(--warn)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Flagged for Review</div></div>
+        <div id="card-spam" class="stat-card"><div class="stat-label">Spam</div><div id="count-spam" class="stat-val" style="color:#8e75ff">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Quarantined to Junk</div></div>
         <div id="card-safe" class="stat-card"><div class="stat-label">Safe</div><div id="count-safe" class="stat-val" style="color:var(--ok)">0</div><div style="font-size: 0.6rem; color: #fff; font-weight: 600; width: 100%; line-height: 1.2; opacity: 0.8;">Inbox / Trusted Senders</div></div>
         <div style="flex:1"></div>
-        <button id="show-logs-btn" class="btn-ui" style="width:100%; justify-content:center;">OPEN LOGS</button>
-        <button id="reset-btn" class="btn-ui danger" style="width:100%; justify-content:center;">RESET APP</button>
+        <div style="padding:0 10px; display: flex; flex-direction: column; gap: 10px;">
+            <button id="audit-logs-btn" class="btn-ui" style="width:100%; justify-content:center; font-size:0.7rem; height: 32px; border-color: var(--accent);">AUDIT LOGS</button>
+        </div>
     </aside>
     <main class="content">
         <div class="table-container">
-            <div class="table-header" id="main-header"><div data-col="subject">Subject<div class="resizer"></div></div><div data-col="date">Date<div class="resizer"></div></div><div data-col="time">Time<div class="resizer"></div></div><div data-col="ip">IP Address<div class="resizer"></div></div><div data-col="verdict">Verdict<div class="resizer"></div></div><div data-col="score">Score<div class="resizer"></div></div><div data-col="action">Action<div class="resizer"></div></div><div data-col="reasoning">Reasoning<div class="resizer"></div></div></div>
+            <div class="table-header" id="main-header">
+                <div class="col-check"><input type="checkbox" id="check-all"></div>
+                <div class="sortable" data-col="subject" data-sort="subject">Subject<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div class="sortable" data-col="date" data-sort="timestamp">Date<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div class="sortable" data-col="time" data-sort="timestamp">Time<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div class="sortable" data-col="ip" data-sort="ip">IP Address<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div class="sortable" data-col="verdict" data-sort="verdict">Verdict<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div class="sortable" data-col="score" data-sort="score">Score<span class="sort-icon"></span><div class="resizer"></div></div>
+                <div data-col="action">Action<div class="resizer"></div></div>
+                <div data-col="reasoning">Reasoning<div class="resizer"></div></div>
+            </div>
             <div id="threat-list" class="table-list"></div>
             <div id="pagination-controls" style="padding: 5px; display: flex; justify-content: center; gap: 10px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2);">
                 <button id="pg-first" class="btn-step">FIRST</button>
@@ -118,8 +469,12 @@
                 <button id="pg-last" class="btn-step">LAST</button>
             </div>
         </div>
-        <div id="log-container" class="log-area"></div>
     </main>
+  </div>
+
+  <div id="activity-bar">
+    <div class="activity-dot"></div>
+    <span id="activity-text">SYSTEM READY: WAITING FOR THREATS...</span>
   </div>
 
   <script src="ui_settings.js"></script>
@@ -128,14 +483,78 @@
   <script src="ui_history.js"></script>
   <script src="ui_list.js"></script>
   <script src="ui_reset.js"></script>
+  <script src="ui_duplicates.js"></script>
   <script>
     const api = window.securityApi;
-    const list = document.getElementById('threat-list'), logContainer = document.getElementById('log-container'), tooltipEl = document.getElementById('tooltip');
-    window.stats = { malicious: [], suspicious: [], spam: [], safe: [] };
-    let selectedIds = new Set(), pendingActions = new Set(), isProtectionEnabled = false, currentWeights = {}, currentToggles = {}, currentSpamThreshold = 50, colWidths = {}, lastRenderedJson = "", currentForensicId = null;
+    
+    // ENTERPRISE STATE MANAGER
+    window.AppStore = {
+        stats: { malicious: [], suspicious: [], spam: [], safe: [] },
+        selectedIds: new Set(),
+        lastSelectedIndex: -1,
+        isProtectionEnabled: false,
+        isOutlookConnected: false,
+        currentCategory: 'malicious',
+        sortConfig: { key: 'timestamp', direction: 'desc' },
+        currentPage: 1,
+        pageSize: 50,
+        pendingActions: new Set(),
+        
+        updateStats(newData) {
+            for (const cat in newData) {
+                if (this.stats.hasOwnProperty(cat)) {
+                    this.stats[cat] = (newData[cat] || []).filter(i => !this.pendingActions.has(i.entryId));
+                }
+            }
+            this.render();
+        },
+        
+        render() {
+            window.renderList();
+            this.updateCounterUI();
+        },
+
+        updateCounterUI() {
+            ['malicious','suspicious','spam','safe'].forEach(c => { 
+                const el = document.getElementById('count-'+c); 
+                if(el) el.textContent = (this.stats[c] || []).length; 
+            });
+        }
+    };
+
+    const list = document.getElementById('threat-list'), tooltipEl = document.getElementById('tooltip');
 
     window.escapeHTML = function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-    window.addLog = function addLog(msg) { if (!msg) return; const div = document.createElement('div'); div.textContent = msg; logContainer.appendChild(div); if (logContainer.childNodes.length > 500) logContainer.removeChild(logContainer.firstChild); logContainer.scrollTop = logContainer.scrollHeight; }
+    
+    window.addLog = function addLog(msg) { 
+        if (!msg) return; 
+        const div = document.createElement('div'); 
+        div.textContent = msg; 
+        modalLogContainer.appendChild(div); 
+        if (modalLogContainer.childNodes.length > 1000) modalLogContainer.removeChild(modalLogContainer.firstChild); 
+        modalLogContainer.scrollTop = modalLogContainer.scrollHeight; 
+        
+        // Granular Heartbeat (Issue 4)
+        if (msg.includes('Scanning:') || msg.includes('Checking:')) {
+            document.getElementById('activity-text').textContent = msg.replace('Worker:', '').replace('Engine:', '').trim();
+        }
+    }
+
+    document.getElementById('audit-logs-btn').onclick = () => auditLogsModal.style.display = 'flex';
+    document.getElementById('close-audit-logs').onclick = () => auditLogsModal.style.display = 'none';
+    document.getElementById('clear-logs-btn').onclick = () => modalLogContainer.innerHTML = '';
+    document.getElementById('open-logs-folder-btn').onclick = () => api.openLogsFolder();
+
+    // Tab Switching Logic
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.tab).classList.add('active');
+        };
+    });
+
     function applyColWidths() { 
         const root = document.documentElement; 
         Object.keys(colWidths).forEach(k => {
@@ -144,7 +563,6 @@
             root.style.setProperty(`--col-${k}`, val);
         }); 
     }
-    
     
     (function() {
         let startX, startWidth, currentHeader, currentCol;
@@ -183,16 +601,13 @@
         if (!data) return; 
         let populatedCat = null, populatedCount = 0;
         for (const cat in data) { 
-            if (window.stats.hasOwnProperty(cat)) { 
-                window.stats[cat] = (data[cat] || []).filter(i => !pendingActions.has(i.entryId)); 
-                const len = window.stats[cat].length;
+            if (window.AppStore.stats.hasOwnProperty(cat)) { 
+                window.AppStore.stats[cat] = (data[cat] || []).filter(i => !window.AppStore.pendingActions.has(i.entryId)); 
+                const len = window.AppStore.stats[cat].length;
                 if (len > 0) { populatedCat = cat; populatedCount++; }
             } 
         } 
-        ['malicious','suspicious','spam','safe'].forEach(c => { 
-            const el = document.getElementById('count-'+c); 
-            if(el) el.textContent = (window.stats[c] || []).length; 
-        }); 
+        window.AppStore.updateCounterUI();
         
         if (populatedCount === 1 && populatedCat) {
             const card = document.getElementById('card-' + populatedCat);
@@ -202,10 +617,31 @@
         window.renderList(); 
     }
     
-    window.copyToClipboard = (text) => { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const t = document.getElementById('toast'); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2000); };
+    window.showNotification = (text, isError = false) => {
+        const t = document.getElementById('toast');
+        t.textContent = text;
+        t.style.background = isError ? 'var(--danger)' : 'var(--accent)';
+        t.style.color = isError ? '#fff' : '#000';
+        t.style.display = 'block';
+        t.style.bottom = '40px';
+        setTimeout(() => {
+            t.style.bottom = '30px';
+            t.style.display = 'none';
+        }, 3000);
+    };
+
+    window.copyToClipboard = (text) => { 
+        const el = document.createElement('textarea'); 
+        el.value = text; 
+        document.body.appendChild(el); 
+        el.select(); 
+        document.execCommand('copy'); 
+        document.body.removeChild(el); 
+        window.showNotification('COPIED TO CLIPBOARD');
+    };
     
     (function() {
-        const logArea = document.getElementById('log-container');
+        const logArea = document.getElementById('modal-log-container');
         const logMenu = document.getElementById('log-ctx-menu');
         
         logArea.oncontextmenu = (e) => {
@@ -229,14 +665,18 @@
         });
     })();
 
-    document.getElementById('show-logs-btn').onclick = () => api.openLogsFolder();
-    document.getElementById('scanner-toggle').onclick = async () => { 
-        const targetState = !isProtectionEnabled;
+    document.getElementById('shield-toggle').onclick = async () => { 
+        const s = document.getElementById('shield-toggle');
+        if (s.classList.contains('status-loading')) return;
+        
+        const targetState = !window.AppStore.isProtectionEnabled;
+        s.className = 'shield-container status-loading';
+        document.getElementById('shield-text').textContent = targetState ? 'STARTING...' : 'STOPPING...';
+        
         const res = await api.setEnabled(targetState);
-        if (res && res.ok) {
-            isProtectionEnabled = targetState;
-            const b = document.getElementById('scanner-toggle');
-            if(b){ b.className = 'status-btn ' + (isProtectionEnabled ? 'on' : 'off'); b.textContent = isProtectionEnabled ? 'Turned On' : 'Turned Off'; }
+        if (!res || !res.ok) {
+            api.onStatusSync(window.AppStore.isProtectionEnabled); // Restore UI
+            window.addLog("SYSTEM: Security Service is initializing. Please wait and try again.");
         }
     };
     
@@ -244,46 +684,71 @@
         if (!d) return; 
         window.addLog(`${d.status}: ${d.details}`);
         if (d.status === 'MONITORING') { 
-            const ind = document.getElementById('scan-status-indicator'); 
-            if(ind){ ind.style.display = 'flex'; document.getElementById('scan-status-text').textContent = 'LIVE MONITORING'; } 
+             // Handled by shield logic
         } else if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED'].includes(d.status)) {
             const newCat = d.verdict.toLowerCase().includes('malicious') ? 'malicious' : (d.verdict.toLowerCase().includes('spam') ? 'spam' : 'safe');
             const fp = d.fingerprint || d.entryId;
+            const originalId = d.originalEntryId;
             
+            // Remove from all existing categories
             ['malicious','suspicious','spam','safe'].forEach(c => {
-                window.stats[c] = window.stats[c].filter(x => (x.fingerprint || x.entryId) !== fp);
+                window.AppStore.stats[c] = window.AppStore.stats[c].filter(x => 
+                    (x.fingerprint || x.entryId) !== fp && 
+                    x.entryId !== originalId
+                );
             });
             
-            if (window.stats[newCat]) {
-                window.stats[newCat].push(d);
-                updateDashboard(window.stats);
+            // Add to the new category
+            if (window.AppStore.stats[newCat]) {
+                window.AppStore.stats[newCat].push(d);
+                window.updateDashboard(window.AppStore.stats);
             }
         }
     });
+
     api.onStatusSync(en => { 
-        isProtectionEnabled = en; 
-        const b = document.getElementById('scanner-toggle'); 
-        if(b){ b.className = 'status-btn ' + (en ? 'on' : 'off'); b.textContent = en ? 'Turned On' : 'Turned Off'; } 
-        const ind = document.getElementById('scan-status-indicator');
-        if(ind && !en) ind.style.display = 'none';
+        window.AppStore.isProtectionEnabled = en; 
+        const s = document.getElementById('shield-toggle');
+        const t = document.getElementById('shield-text');
+        
+        if (en) {
+            if (window.AppStore.isOutlookConnected) {
+                s.className = 'shield-container status-active';
+                t.textContent = 'ACTIVE';
+            } else {
+                s.className = 'shield-container status-error';
+                t.textContent = 'OUTLOOK DISCONNECTED';
+            }
+        } else {
+            s.className = 'shield-container status-paused';
+            t.textContent = 'PAUSED';
+        }
     });
-    api.onOutlookStatus(running => { const dot = document.getElementById('outlook-dot'), text = document.getElementById('outlook-text'); if(dot){ dot.style.background = running ? 'var(--ok)' : 'var(--danger)'; text.textContent = running ? 'OUTLOOK: CONNECTED' : 'OUTLOOK: DISCONNECTED'; } });
+
+    api.onOutlookStatus(running => { 
+        window.AppStore.isOutlookConnected = running;
+        const dot = document.getElementById('outlook-dot'), text = document.getElementById('outlook-text'); 
+        if(dot){ dot.style.background = running ? 'var(--ok)' : 'var(--danger)'; text.textContent = running ? 'OUTLOOK: CONNECTED' : 'OUTLOOK: DISCONNECTED'; } 
+        api.onStatusSync(window.AppStore.isProtectionEnabled); // Refresh shield
+    });
+
     api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); });
     api.onLiveLog(msg => window.addLog(msg));
     
     async function init() { 
+        const cfg = await api.getConfig(); 
+        window.AppStore.isProtectionEnabled = !!cfg.enabled; 
+        
+        if (cfg.columnWidths) {
+            colWidths = cfg.columnWidths; 
+            applyColWidths();
+        }
         window.addLog("Protection Center Initializing...");
         const s = await api.getStats(); 
         updateDashboard(s); 
-        const cfg = await api.getConfig(); 
-        if (cfg.columnWidths) colWidths = cfg.columnWidths; 
-        isProtectionEnabled = !!cfg.enabled; 
-        const b = document.getElementById('scanner-toggle'); 
-        if(b){ b.className = 'status-btn ' + (isProtectionEnabled?'on':'off'); b.textContent = isProtectionEnabled?'Turned On':'Turned Off'; } 
         applyColWidths(); 
     }
     init();
   </script>
 </body>
 </html>
-

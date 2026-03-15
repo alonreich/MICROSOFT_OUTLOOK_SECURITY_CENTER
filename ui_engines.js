@@ -1,18 +1,3 @@
-﻿document.body.insertAdjacentHTML('beforeend', `
-<div id="sensitivity-modal" class="modal">
-    <div class="modal-content" style="width: 650px;">
-        <div class="modal-header">ANTI-SPAM ENGINES</div>
-        <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; padding: 10px; overflow-y: auto;"></div>
-        <div style="margin-top: 20px; padding: 15px; border-top: 2px solid var(--border); background: rgba(142, 117, 255, 0.05); border-radius: 10px;">
-            <div style="text-align: center; margin-bottom: 10px;"><div style="color: var(--accent); font-weight: 800; font-size: 0.85rem;">SPAM VERDICT AGGRESSIVENESS</div></div>
-            <div style="display: flex; align-items: center; gap: 15px;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--ok);">RELAXED</div><input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;"><div style="font-size: 0.7rem; font-weight: 800; color: var(--danger);">STRICT</div></div>
-            <div style="text-align: center; margin-top: 10px;"><span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span><div id="verdict-description" style="font-size: 0.65rem; color: var(--muted);">Emails scoring 50% or lower will be marked as SPAM.</div></div>
-        </div>
-        <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;"><button id="save-sensitivity" class="btn-ui success">APPLY WEIGHTS</button><button id="reset-sensitivity-defaults" class="btn-ui">RESET DEFAULTS</button><button id="close-sensitivity" class="btn-ui danger">CANCEL</button></div>
-    </div>
-</div>
-`);
-
 (function() {
     const api = window.securityApi;
     const tooltipEl = document.getElementById('tooltip');
@@ -93,7 +78,8 @@
 
     document.getElementById('save-sensitivity').onclick = async () => { 
         const cfg = await api.getConfig(); 
-        api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); 
+        await api.setRubrics({ ...cfg.rubrics, weights: currentWeights, toggles: currentToggles, spamThresholdPercent: currentSpamThreshold }); 
+        window.showNotification('Anti-Spam Engine weights and thresholds updated.');
         document.getElementById('sensitivity-modal').style.display = 'none'; 
     };
 
@@ -111,6 +97,6 @@
         document.getElementById('verdict-threshold-val').textContent = '50%';
         document.getElementById('verdict-description').textContent = 'Emails scoring 50% or lower will be marked as SPAM.';
         renderSensitivityUI(); 
+        window.showNotification('Heuristic engine weights reset to factory defaults.');
     };
 })();
-

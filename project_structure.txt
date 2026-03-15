@@ -22,7 +22,7 @@ To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook 
 
 ## 4. RESOURCE & STABILITY MANAGEMENT
 - **COM Lifecycle:** Strict `Marshal.ReleaseComObject` protocol for every reference to prevent `OUTLOOK.EXE` zombie processes.
-- **Nuclear Reset Protocol:** Comprehensive system wipe that physically unlinks all database files, purges forensic JSON fragments, deletes security logs, and restores factory defaults.
+- **Nuclear Reset Protocol:** Comprehensive system wipe that physically unlinks all database files, purges forensic JSON fragments, deletes security logs, and restores factory defaults. Requires multi-step confirmation of data loss (YES/NO).
 - **Watchdog Engine:** 60-second hard-kill for hung scanning processes and real-time heartbeat monitoring.
 - **Proactive Outlook Management:** Automated registry-based lookup and background launch of Outlook if not running.
 
@@ -63,4 +63,5 @@ To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook 
 - `tray_on.png` / `tray_off.png`: Status-aware system tray icons.
 - `icon.png` / `icon_on.png` / `icon_off.png`: Application branding assets.
 - `logs/`: Directory for security logs and engine output.
+- `logs/microsoft_outlook_security.log`: Core security log file.
 - `logs/forensics/`: Storage for zero-disk forensic snapshots.
