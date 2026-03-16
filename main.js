@@ -1,4 +1,4 @@
-﻿const path = require('node:path');
+const path = require('node:path');
 const fs = require('node:fs');
 const fsPromises = fs.promises;
 const net = require('node:net');
@@ -16,17 +16,18 @@ const LOG_FILE = path.join(LOG_DIR, 'microsoft_outlook_security.log');
 [LOG_DIR, FORENSICS_DIR].forEach(d => { if (!fs.existsSync(d)) try { fs.mkdirSync(d, { recursive: true }); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } } });
 if (!fs.existsSync(LOG_FILE)) try { fs.writeFileSync(LOG_FILE, `[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '')}] Security Center: Initialization Success. Monitoring is active.\n`); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
 
-function logToFile(msg, level = "INFO") {
+async function logToFile(msg, level = "INFO") {
     const ts = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
     const logLine = `[${ts}] [${level}] ${msg}\n`;
     try { 
-        if (fs.existsSync(LOG_FILE)) {
-            const stats = fs.statSync(LOG_FILE);
-            if (stats.size > 5 * 1024 * 1024) {
-                fs.renameSync(LOG_FILE, LOG_FILE + '.1');
+        const exists = fs.existsSync(LOG_FILE);
+        if (exists) {
+            const stats = await fsPromises.stat(LOG_FILE).catch(() => null);
+            if (stats && stats.size > 10 * 1024 * 1024) {
+                await fsPromises.rename(LOG_FILE, LOG_FILE + '.1').catch(() => {});
             }
         }
-        fs.appendFileSync(LOG_FILE, logLine); 
+        await fsPromises.appendFile(LOG_FILE, logLine).catch(() => {});
         broadcastToUi({ type: 'live-log', message: `[${level}] ${msg}` });
     } catch(err) { console.error(err); }
 }
@@ -48,7 +49,8 @@ const configStore = new Store({
         blacklist: { emails: [], ips: [], domains: [], combos: [] },
         launchAtStartup: true,
         scanningSpeed: 50,
-        historyScanEnabled: false
+        historyScanEnabled: false,
+        threatIntelligenceLevel: 1
     }
 });
 
@@ -56,6 +58,9 @@ const dataStore = new Store({
     cwd: USER_DATA, name: 'data', clearInvalidConfig: true,
     defaults: { processedIds: [], releasedFingerprints: [], stats: { spam: [], safe: [], malicious: [], suspicious: [] } }
 });
+
+const MAX_PROCESSED_IDS = 100000;
+const MAX_STATS_PER_CAT = 5000;
 
 let mainWindow = null, tray = null, isQuitting = false, isEnabled = !!configStore.get('enabled');
 let uiPipeClient = null, serviceSession = null, serviceSpawnInFlight = false;
@@ -116,7 +121,7 @@ function flushStats() {
                 const fid = item.fingerprint || item.entryId || item.originalEntryId;
                 if (!fid || seen.has(fid)) return false;
                 seen.add(fid); return true;
-            }).slice(-1000);
+            }).slice(-MAX_STATS_PER_CAT);
             statsBuffer[cat] = [];
         }
         dataStore.set('stats', currentStats);
@@ -125,7 +130,6 @@ function flushStats() {
     bufferTimer = null;
 }
 
-// Forensic Cleanup: Remove files that are not in the current stats or buffer
 async function cleanupForensics() {
     try {
         const stats = dataStore.get('stats') || { malicious: [], suspicious: [], spam: [], safe: [] };
@@ -186,9 +190,7 @@ function getPsWorker() {
                     }
                     broadcastToUi({ type: 'scan-update', data: p }); 
                 }
-            } catch (err) { 
-                // Silent catch for parsing noise
-            }
+            } catch (err) { }
         }
     });
     psWorker.on('exit', (code) => {
@@ -325,16 +327,13 @@ async function runOutlookScanner() {
                     
                     if (p.status !== 'MONITORING' && p.status !== 'INFO' && p.status !== 'ERROR') {
                         const cat = p.verdict.toLowerCase().includes('malicious') ? 'malicious' : (p.verdict.toLowerCase().includes('spam') ? 'spam' : 'safe');
-                        
-                        // Use fingerprint as the unique key for tracking what was already scanned
                         const fid = p.fingerprint || p.entryId || p.originalEntryId;
                         if (fid) {
                             const pIds = dataStore.get('processedIds') || [];
                             if (!pIds.includes(fid)) {
-                                dataStore.set('processedIds', [...pIds, fid].slice(-10000));
+                                dataStore.set('processedIds', [...pIds, fid].slice(-MAX_PROCESSED_IDS));
                             }
                         }
-
                         statsBuffer[cat].push(p);
                         if (!bufferTimer) bufferTimer = setTimeout(flushStats, 500);
                         if (p.fullHeaders || p.body) {
@@ -346,9 +345,7 @@ async function runOutlookScanner() {
                     }
                     broadcastToUi({ type: 'scan-update', data: p });
                 }
-            } catch (err) { 
-                // Silent catch for line parsing noise
-            }
+            } catch (err) { }
         }
     });
 
@@ -362,16 +359,12 @@ async function runOutlookScanner() {
 let restartTimer = null;
 function requestScannerRestart(reason) {
     if (restartTimer) clearTimeout(restartTimer);
-    
-    // Optimization: If the engine is already running and we're just updating policies,
-    // push the data live instead of a hard restart.
     if (currentScanChild && ['whitelist', 'blacklist', 'spamKeywords', 'rubrics'].includes(reason)) {
         logToFile(`Live Policy Injection: Updating [${reason}] without restart.`);
         try {
             const vtKeyEnc = configStore.get('vtApiKey');
             let vtKeyDec = '';
             if (vtKeyEnc) { try { vtKeyDec = safeStorage.decryptString(Buffer.from(vtKeyEnc, 'base64')); } catch { } }
-            
             currentScanChild.stdin.write(JSON.stringify({ 
                 type: 'config-update',
                 whitelist: configStore.get('whitelist'),
@@ -420,21 +413,16 @@ function startService() {
                     if (m.type === 'store-set') { 
                         if (['stats', 'processedIds'].includes(m.key)) dataStore.set(m.key, m.value);
                         else configStore.set(m.key, m.value);
-                        
                         if (m.key === 'enabled' || m.key === 'historyScanEnabled') { 
                             broadcastToUi({ type: 'status-sync', enabled: !!configStore.get('enabled'), stats: dataStore.get('stats') }); 
-                            if (configStore.get('enabled')) { 
-                                requestScannerRestart(m.key);
-                            }
+                            if (configStore.get('enabled')) requestScannerRestart(m.key);
                             else if (currentScanChild) { 
                                 currentScanChild.removeAllListeners('exit');
                                 currentScanChild.kill('SIGKILL'); 
                                 isScanning = false; 
                             }
                         } else if (m.key === 'scanningSpeed') {
-                            if (currentScanChild) {
-                                currentScanChild.stdin.write(JSON.stringify({ type: 'config-update', scanningSpeed: m.value }) + '\n');
-                            }
+                            if (currentScanChild) currentScanChild.stdin.write(JSON.stringify({ type: 'config-update', scanningSpeed: m.value }) + '\n');
                         } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey'].includes(m.key)) {
                             requestScannerRestart(m.key);
                         }
@@ -444,8 +432,7 @@ function startService() {
                             try {
                                 if (currentScanChild) currentScanChild.kill('SIGKILL');
                                 if (psWorker) psWorker.kill('SIGKILL');
-                            } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
-                            
+                            } catch (err) { }
                             configStore.clear(); 
                             dataStore.clear();
                             try {
@@ -457,27 +444,26 @@ function startService() {
                                         if (fs.statSync(p).isFile()) fs.unlinkSync(p);
                                     }
                                 }
-                            } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
+                            } catch (err) { }
                             process.exit(0); 
                         } 
                         if (m.payload === 'Release' || m.payload === 'Quarantine' || m.payload === 'Delete' || m.payload === 'Check-Existence' || m.payload === 'DuplicateScan') {
-                            logToFile(`DEBUG: Service received [${m.payload}] command. Forwarding to Security Worker...`);
                             const worker = getPsWorker();
-                            if (worker && worker.stdin) {
-                                worker.stdin.write(JSON.stringify({ action: m.payload, rid: m.rid, ...m.data }) + '\n'); 
-                            } else {
-                                logToFile(`ERROR: Security Worker stdin is not available. Command dropped.`, 'ERROR');
-                            }
+                            if (worker && worker.stdin) worker.stdin.write(JSON.stringify({ action: m.payload, rid: m.rid, ...m.data }) + '\n'); 
+                        }
+                        if (m.payload === 'ResetDuplicateStack') {
+                            const worker = getPsWorker();
+                            if (worker && worker.stdin) worker.stdin.write(JSON.stringify({ action: 'ResetStack' }) + '\n');
                         }
                     }
-                    } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
-                    }
-                    });
-                    s.on('close', () => activeConnections.delete(s));
-                    }).listen(serviceSession.pipeName, () => {
-                        logToFile('Security Service IPC Layer: ACTIVE');
-                        if (configStore.get('enabled')) runOutlookScanner();
-                    });
+                } catch (err) { }
+            }
+        });
+        s.on('close', () => activeConnections.delete(s));
+    }).listen(serviceSession.pipeName, () => {
+        logToFile('Security Service IPC Layer: ACTIVE');
+        if (configStore.get('enabled')) runOutlookScanner();
+    });
 }
 
 const reqHandlers = new Map();
@@ -509,10 +495,8 @@ function setupPipeClient() {
                     updateTrayState();
                     broadcastToUi({ type: 'stats-update', data: { full: true, stats: statsCache } });
                     broadcastToUi(r);
-                } else {
-                    broadcastToUi(r);
-                }
-            } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
+                } else broadcastToUi(r);
+            } catch (err) { }
         }
     });
 }
@@ -524,31 +508,29 @@ function spawnService() {
     const env = { ...process.env, SVC_HANDSHAKE: JSON.stringify(serviceSession) };
     delete env.ELECTRON_RUN_AS_NODE;
     spawn(process.execPath, [APP_ROOT, '--service'], { detached: true, windowsHide: true, env });
-    setTimeout(() => { uiPipeClient = net.connect(serviceSession.pipeName, () => { uiPipeClient.write(JSON.stringify({ type: 'auth', token: serviceSession.token }) + '\n'); setupPipeClient(); }); }, 2000);
+    let attempts = 0;
+    const maxAttempts = 50;
+    const tryConnect = () => {
+        uiPipeClient = net.connect(serviceSession.pipeName, () => {
+            uiPipeClient.write(JSON.stringify({ type: 'auth', token: serviceSession.token }) + '\n');
+            setupPipeClient();
+        });
+        uiPipeClient.on('error', () => {
+            if (++attempts < maxAttempts) setTimeout(tryConnect, 200);
+            else logToFile('Failed to connect to Security Service after 50 attempts.', 'ERROR');
+        });
+    };
+    tryConnect();
 }
 
 app.on('ready', () => {
     Menu.setApplicationMenu(null);
-    
     const shouldStart = configStore.get('launchAtStartup');
-    if (shouldStart !== undefined) {
-        app.setLoginItemSettings({
-            openAtLogin: shouldStart,
-            path: process.execPath,
-            args: [APP_ROOT, '--service']
-        });
-    }
-
-    // Auto-migration: Ensure new default keywords are added if they don't exist
+    if (shouldStart !== undefined) app.setLoginItemSettings({ openAtLogin: shouldStart, path: process.execPath, args: [APP_ROOT, '--service'] });
     const currentKeywords = configStore.get('spamKeywords') || [];
     const defaultKeywords = ['viagra', 'lottery', 'urgent', 'bitcoin', 'sex', 'pussy', 'ass', 'סקס', 'תחת', 'כוס', 'זין', 'cock', 'dick', 'horny'];
     let keywordsChanged = false;
-    defaultKeywords.forEach(kw => {
-        if (!currentKeywords.includes(kw)) {
-            currentKeywords.push(kw);
-            keywordsChanged = true;
-        }
-    });
+    defaultKeywords.forEach(kw => { if (!currentKeywords.includes(kw)) { currentKeywords.push(kw); keywordsChanged = true; } });
     if (keywordsChanged) configStore.set('spamKeywords', currentKeywords);
 
     if (isServiceMode) { 
@@ -558,11 +540,10 @@ app.on('ready', () => {
                 if (h) { serviceSession = h; startService(); }
             } catch { app.quit(); }
         } else {
-            // Service started directly without handshake, usually by scheduler
+            serviceSession = { pipeName: `\\\\.\\pipe\\mos_standalone`, token: 'SVC_AUTO_AUTH', ownerPid: process.pid };
             startService();
         }
-    }
-    else {
+    } else {
         if (!app.requestSingleInstanceLock()) { app.quit(); return; }
         const icon = nativeImage.createFromPath(path.join(APP_ROOT, 'tray_off.png')).resize({ width: 16, height: 16 });
         tray = new Tray(icon);
@@ -582,9 +563,7 @@ function updateTrayState() {
     const windowIconName = isEnabled ? 'icon_on.png' : 'icon_off.png';
     const icon = nativeImage.createFromPath(path.join(APP_ROOT, iconName)).resize({ width: 16, height: 16 });
     tray.setImage(icon);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setIcon(nativeImage.createFromPath(path.join(APP_ROOT, windowIconName)));
-    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(nativeImage.createFromPath(path.join(APP_ROOT, windowIconName)));
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Show Dashboard', click: () => mainWindow.show() },
         { label: isEnabled ? 'Security: ACTIVE' : 'Security: DISABLED', enabled: false },
@@ -597,17 +576,8 @@ function updateTrayState() {
 const pipeReq = (m) => new Promise(resolve => { 
     if (!uiPipeClient) return resolve(null); 
     const rid = crypto.randomBytes(8).toString('hex'); 
-    const timeout = setTimeout(() => {
-        if (reqHandlers.has(rid)) {
-            reqHandlers.delete(rid);
-            logToFile(`IPC request timeout for ${m.type} ${m.key || m.payload || ''}`);
-            resolve(null);
-        }
-    }, 5000);
-    reqHandlers.set(rid, (val) => {
-        clearTimeout(timeout);
-        resolve(val);
-    }); 
+    const timeout = setTimeout(() => { if (reqHandlers.has(rid)) { reqHandlers.delete(rid); resolve(null); } }, 5000);
+    reqHandlers.set(rid, (val) => { clearTimeout(timeout); resolve(val); }); 
     uiPipeClient.write(JSON.stringify({ ...m, rid }) + '\n'); 
 });
 
@@ -625,36 +595,10 @@ ipcMain.handle('get-config', async () => {
     if (res.vtApiKey && !configCache.vtApiKey) { try { res.vtApiKey = safeStorage.decryptString(Buffer.from(res.vtApiKey, 'base64')); } catch { res.vtApiKey = ''; } }
     return res;
 });
-ipcMain.handle('pause-duplicate-scan', () => {
-    try { fs.writeFileSync(path.join(APP_ROOT, '.dup_pause'), '1'); return { ok: true }; }
-    catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('resume-duplicate-scan', () => {
-    const p = path.join(APP_ROOT, '.dup_pause');
-    try { if (fs.existsSync(p)) fs.unlinkSync(p); return { ok: true }; }
-    catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('get-stats', async () => {
-    if (uiPipeClient) {
-        const res = await pipeReq({ type: 'store-get', key: 'stats' });
-        if (res) {
-            statsCache = res;
-            return statsCache;
-        }
-    }
-    return statsCache || { malicious: [], suspicious: [], spam: [], safe: [] };
-});
-ipcMain.handle('get-forensics', (e, id) => { 
-    // Always hash the ID provided by the UI (which is entryId)
-    const fHash = crypto.createHash('sha256').update(String(id)).digest('hex');
-    const fPath = path.join(FORENSICS_DIR, `${fHash}.json`); 
-    if (fs.existsSync(fPath)) {
-        return JSON.parse(fs.readFileSync(fPath, 'utf8'));
-    }
-    return { fullHeaders: 'N/A', body: 'N/A' }; 
-});
+ipcMain.handle('pause-duplicate-scan', () => { try { fs.writeFileSync(path.join(APP_ROOT, '.dup_pause'), '1'); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('resume-duplicate-scan', () => { const p = path.join(APP_ROOT, '.dup_pause'); try { if (fs.existsSync(p)) fs.unlinkSync(p); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('get-stats', async () => { if (uiPipeClient) { const res = await pipeReq({ type: 'store-get', key: 'stats' }); if (res) { statsCache = res; return statsCache; } } return statsCache || { malicious: [], suspicious: [], spam: [], safe: [] }; });
+ipcMain.handle('get-forensics', (e, id) => { const fHash = crypto.createHash('sha256').update(String(id)).digest('hex'); const fPath = path.join(FORENSICS_DIR, `${fHash}.json`); if (fs.existsSync(fPath)) return JSON.parse(fs.readFileSync(fPath, 'utf8')); return { fullHeaders: 'N/A', body: 'N/A' }; });
 ipcMain.handle('set-enabled', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'enabled', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('set-history-enabled', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'historyScanEnabled', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('set-vt-key', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'vtApiKey', value: safeStorage.encryptString(v).toString('base64') }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
@@ -664,125 +608,25 @@ ipcMain.handle('set-whitelist', (e, v) => { if (uiPipeClient) { uiPipeClient.wri
 ipcMain.handle('set-blacklist', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'blacklist', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('save-column-widths', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'columnWidths', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('set-scanning-speed', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'scanningSpeed', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
-ipcMain.handle('set-startup', (e, v) => {
-    if (uiPipeClient) {
-        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'launchAtStartup', value: v }) + '\n');
-        app.setLoginItemSettings({ openAtLogin: v, path: process.execPath, args: [APP_ROOT, '--service'] });
-        return { ok: true };
-    }
-    return { ok: false, error: 'Service initializing' };
-});
+ipcMain.handle('set-threat-intel-level', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'threatIntelligenceLevel', value: v }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
+ipcMain.handle('set-startup', (e, v) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'launchAtStartup', value: v }) + '\n'); app.setLoginItemSettings({ openAtLogin: v, path: process.execPath, args: [APP_ROOT, '--service'] }); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('release-email', (e, d) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Release', data: d }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('quarantine-email', (e, d) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Quarantine', data: d }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('delete-email', (e, d) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Delete', data: d }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
-ipcMain.handle('verify-existence', async (e, d) => {
-    if (!uiPipeClient || !d.items || d.items.length === 0) return { removedCount: 0 };
-    const rid = crypto.randomBytes(8).toString('hex');
-    const probeCategory = d.items[0].category; // All items in a probe are same category
-    
-    return new Promise(resolve => {
-        const timeout = setTimeout(() => {
-            reqHandlers.delete(rid);
-            resolve({ removedCount: 0 });
-        }, 35000);
-        
-        reqHandlers.set(rid, (val) => {
-            clearTimeout(timeout);
-            if (val && val.removed && val.removed.length > 0) {
-                const currentStats = dataStore.get('stats') || { malicious: [], suspicious: [], spam: [], safe: [] };
-                const removedIds = new Set(val.removed.map(r => r.entryId));
-                
-                if (currentStats[probeCategory]) {
-                    currentStats[probeCategory] = currentStats[probeCategory].filter(i => !removedIds.has(i.entryId));
-                }
-                
-                dataStore.set('stats', currentStats);
-                broadcastToUi({ type: 'stats-update', data: { full: true, stats: currentStats } });
-                
-                // If items were MOVED (found elsewhere), they will be picked up by the next scan cycle
-                // because we didn't add their fingerprints to processedIds yet (or they are new IDs)
-                
-                resolve({ removedCount: val.removed.length });
-            } else {
-                resolve({ removedCount: 0 });
-            }
-        });
-        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Check-Existence', rid, data: d }) + '\n');
-    });
-});
+ipcMain.handle('verify-existence', async (e, d) => { if (!uiPipeClient || !d.items || d.items.length === 0) return { removedCount: 0 }; const rid = crypto.randomBytes(8).toString('hex'); const probeCategory = d.items[0].category; return new Promise(resolve => { const timeout = setTimeout(() => { reqHandlers.delete(rid); resolve({ removedCount: 0 }); }, 35000); reqHandlers.set(rid, (val) => { clearTimeout(timeout); if (val && val.removed && val.removed.length > 0) { const currentStats = dataStore.get('stats') || { malicious: [], suspicious: [], spam: [], safe: [] }; const removedIds = new Set(val.removed.map(r => r.entryId)); if (currentStats[probeCategory]) currentStats[probeCategory] = currentStats[probeCategory].filter(i => !removedIds.has(i.entryId)); dataStore.set('stats', currentStats); broadcastToUi({ type: 'stats-update', data: { full: true, stats: currentStats } }); resolve({ removedCount: val.removed.length }); } else resolve({ removedCount: 0 }); }); uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Check-Existence', rid, data: d }) + '\n'); }); });
 ipcMain.handle('open-logs-folder', () => shell.openPath(LOG_DIR));
 ipcMain.handle('app-reset', () => { if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Reset' }) + '\n'); setTimeout(() => { app.relaunch(); app.exit(); }, 1000); });
-
-ipcMain.handle('scan-duplicates', async () => {
-    logToFile('UI REQUEST: Initialize Duplicate Email Detection sequence.');
-    if (uiPipeClient) {
-        if (!psWorker || psWorker.killed) {
-            logToFile('RECOVERY: Security Worker found in inactive state. Re-spawning for Duplicate Scan...', 'WARN');
-            getPsWorker();
-        }
-        
-        logToFile('COMMAND: Sending [DuplicateScan] action to Security Worker.');
-        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'DuplicateScan' }) + '\n');
-        return { ok: true };
-    }
-    logToFile('ERROR: IPC Pipe not established. Duplicate Scan request rejected.', 'ERROR');
-    return { ok: false, error: 'Service initializing' };
-});
-
-ipcMain.handle('delete-duplicates', async (e, d) => {
-    logToFile(`UI Request: Deleting ${d.entryIds?.length || 0} duplicate emails...`);
-    if (uiPipeClient) {
-        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Delete', data: d }) + '\n');
-        return { ok: true };
-    }
-    return { ok: false, error: 'Service initializing' };
-});
-
-ipcMain.handle('export-config', async () => {
-    const { filePath } = await dialog.showSaveDialog({
-        title: 'Export Security Configuration',
-        defaultPath: path.join(app.getPath('downloads'), 'outlook-security-config.json'),
-        filters: [{ name: 'JSON Files', extensions: ['json'] }]
+ipcMain.handle('scan-duplicates', async () => { if (uiPipeClient) { if (!psWorker || psWorker.killed) getPsWorker(); uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'DuplicateScan' }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
+ipcMain.handle('delete-duplicates', async (e, d) => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Delete', data: d }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
+ipcMain.handle('reset-duplicate-engine', async () => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'ResetDuplicateStack' }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
+ipcMain.handle('scan-virus', async (e, id) => {
+    if (!uiPipeClient) return { success: false, error: 'Service disconnected' };
+    const rid = crypto.randomBytes(8).toString('hex');
+    return new Promise(resolve => {
+        const timeout = setTimeout(() => { reqHandlers.delete(rid); resolve({ success: false, error: 'Cloud Scan Timeout' }); }, 60000);
+        reqHandlers.set(rid, (val) => { clearTimeout(timeout); resolve({ success: true, data: val }); });
+        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'CloudVirusScan', rid, data: { entryId: id, threatIntelligenceLevel: configStore.get('threatIntelligenceLevel') } }) + '\n');
     });
-    if (!filePath) return { canceled: true };
-    const cfg = { ...configStore.store };
-    if (cfg.vtApiKey) { try { cfg.vtApiKey = safeStorage.decryptString(Buffer.from(cfg.vtApiKey, 'base64')); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } } }
-    
-    const exportData = {
-        vtApiKey: cfg.vtApiKey,
-        spamKeywords: cfg.spamKeywords,
-        rubrics: cfg.rubrics,
-        whitelist: cfg.whitelist,
-        blacklist: cfg.blacklist,
-        launchAtStartup: cfg.launchAtStartup
-    };
-    fs.writeFileSync(filePath, JSON.stringify(exportData, null, 4));
-    return { success: true, filePath };
 });
-
-ipcMain.handle('import-config', async () => {
-    const { filePaths } = await dialog.showOpenDialog({
-        title: 'Import Security Configuration',
-        filters: [{ name: 'JSON Files', extensions: ['json'] }],
-        properties: ['openFile']
-    });
-    if (!filePaths || filePaths.length === 0) return { canceled: true };
-    try {
-        const content = fs.readFileSync(filePaths[0], 'utf8');
-        const data = JSON.parse(content);
-        
-        const keys = ['vtApiKey', 'spamKeywords', 'rubrics', 'whitelist', 'blacklist'];
-        for (const k of keys) {
-            if (data[k] !== undefined) {
-                let val = data[k];
-                if (k === 'vtApiKey' && val) { val = safeStorage.encryptString(val).toString('base64'); }
-                configStore.set(k, val);
-                if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: k, value: val }) + '\n');
-            }
-        }
-        return { success: true };
-    } catch (e) {
-        return { success: false, error: e.message };
-    }
-});
-
+ipcMain.handle('export-config', async () => { const { filePath } = await dialog.showSaveDialog({ title: 'Export Security Configuration', defaultPath: path.join(app.getPath('downloads'), 'outlook-security-config.json'), filters: [{ name: 'JSON Files', extensions: ['json'] }] }); if (!filePath) return { canceled: true }; const cfg = { ...configStore.store }; if (cfg.vtApiKey) { try { cfg.vtApiKey = safeStorage.decryptString(Buffer.from(cfg.vtApiKey, 'base64')); } catch (err) { } } const exportData = { vtApiKey: cfg.vtApiKey, spamKeywords: cfg.spamKeywords, rubrics: cfg.rubrics, whitelist: cfg.whitelist, blacklist: cfg.blacklist, launchAtStartup: cfg.launchAtStartup }; fs.writeFileSync(filePath, JSON.stringify(exportData, null, 4)); return { success: true, filePath }; });
+ipcMain.handle('import-config', async () => { const { filePaths } = await dialog.showOpenDialog({ title: 'Import Security Configuration', filters: [{ name: 'JSON Files', extensions: ['json'] }], properties: ['openFile'] }); if (!filePaths || filePaths.length === 0) return { canceled: true }; try { const content = fs.readFileSync(filePaths[0], 'utf8'); const data = JSON.parse(content); const keys = ['vtApiKey', 'spamKeywords', 'rubrics', 'whitelist', 'blacklist']; for (const k of keys) { if (data[k] !== undefined) { let val = data[k]; if (k === 'vtApiKey' && val) val = safeStorage.encryptString(val).toString('base64'); configStore.set(k, val); if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: k, value: val }) + '\n'); } } return { success: true }; } catch (e) { return { success: false, error: e.message }; } });

@@ -137,7 +137,11 @@ function Parse-Forensics {
         $AttsObj = $item.Attachments
         if ($AttsObj) {
             foreach ($at in $AttsObj) {
-                [void]$atts.Add(@{ name=$at.FileName; hash="N/A" })
+                $hash = "N/A"
+                try {
+                    $hash = Get-SHA256 "$($at.FileName)|$($at.Size)"
+                } catch {}
+                [void]$atts.Add(@{ name=$at.FileName; hash=$hash; size=$at.Size })
                 Release-Com $at
             }
             Release-Com $AttsObj
@@ -176,9 +180,7 @@ if ($Mode -eq "Worker") {
             $pauseFile = Join-Path $PSScriptRoot ".dup_pause"
             Log-Progress "Worker: Starting Duplicate Email Discovery phase..."
             
-            # Initialize or Resume
             if ($null -eq $Global:DupStack) {
-                Log-Progress "Worker: Building master folder stack from Outlook stores..."
                 $Global:DupStack = New-Object System.Collections.Generic.Stack[object]
                 $Global:DupHashes = @{}
                 $Global:DupResults = New-Object System.Collections.Generic.List[object]
@@ -186,26 +188,31 @@ if ($Mode -eq "Worker") {
                 
                 try {
                     foreach ($S in $N.Stores) {
-                        Log-Progress "Worker: Indexing Store: $($S.DisplayName)"
-                        @(6, 5) | ForEach-Object { 
-                            try { 
-                                $f = $S.GetDefaultFolder($_); 
-                                if ($f) { 
-                                    $Global:DupStack.Push(@{Folder=$f; Store=$S.DisplayName}) 
-                                    Log-Progress "Worker: Added folder to discovery stack: $($f.Name)"
-                                } 
-                            } catch { Log-Progress "Worker: Store check failed for ID $_" } 
+                        $storeSize = 0; try { $root = $S.GetRootFolder(); $storeSize = $root.Size; Release-Com $root } catch {}
+                        Write-Output (@{type="duplicate-update"; status="StoreStart"; store=$S.DisplayName; size=$storeSize} | ConvertTo-Json -Compress)
+                        
+                        $storeItemsCount = 0
+                        $foldersToProcess = New-Object System.Collections.Generic.Stack[object]
+                        @(6, 5) | ForEach-Object { try { $f = $S.GetDefaultFolder($_); if ($f) { $foldersToProcess.Push($f) } } catch {} }
+                        
+                        while ($foldersToProcess.Count -gt 0) {
+                            $f = $foldersToProcess.Pop()
+                            try { $storeItemsCount += $f.Items.Count } catch {}
+                            $Global:DupStack.Push(@{Folder=$f; Store=$S.DisplayName; StoreSize=$storeSize})
+                            try { foreach ($sub in $f.Folders) { $foldersToProcess.Push($sub) } } catch {}
                         }
+                        Write-Output (@{type="duplicate-update"; status="StoreMeta"; store=$S.DisplayName; totalItems=$storeItemsCount} | ConvertTo-Json -Compress)
                     }
-                } catch { Log-Progress "Worker: CRITICAL ERROR during store indexing: $($_.Exception.Message)" }
+                } catch { Log-Progress "Worker: Error during store indexing: $($_.Exception.Message)" }
             }
 
-            if ($Global:DupStack.Count -eq 0) {
-                Log-Progress "Worker: FATAL - Discovery stack is empty. Verify Outlook connectivity."
-            }
+            $currentStoreName = ""
+            $currentStoreScannedItems = 0
+            $currentStoreScannedSize = 0
+            $currentStoreTotalItems = 0
+            $currentStoreTotalSize = 0
 
             while ($Global:DupStack.Count -gt 0) {
-                # Check for Pause signal
                 if (Test-Path $pauseFile) {
                     Write-Output (@{type="duplicate-update"; status="Paused"} | ConvertTo-Json -Compress)
                     break
@@ -213,43 +220,60 @@ if ($Mode -eq "Worker") {
 
                 $entry = $Global:DupStack.Pop()
                 $f = $entry.Folder; $storeName = $entry.Store
-                Write-Output (@{type="duplicate-update"; status="Progress"; details="Scanning: $storeName \ $($f.Name)"} | ConvertTo-Json -Compress)
                 
+                if ($storeName -ne $currentStoreName) {
+                    if ($currentStoreName -ne "") {
+                        Write-Output (@{type="duplicate-update"; status="StoreFinish"; store=$currentStoreName; found=$Global:DupResults.Count; scanned=$currentStoreScannedItems; size=$currentStoreScannedSize} | ConvertTo-Json -Compress)
+                    }
+                    $currentStoreName = $storeName
+                    $currentStoreScannedItems = 0
+                    $currentStoreScannedSize = 0
+                }
+
                 if ($f.DefaultItemType -eq 0) {
-                    $items = $f.Items
+                    $items = $f.Items; $totalInFolder = try { $items.Count } catch { 0 }
+                    $folderScanned = 0
                     foreach ($t in $items) {
                         try {
+                            $currentStoreScannedItems++
                             $Global:DupScannedCount++
-                            $sender = "Unknown"; try { $sender = Resolve-Email -Recipient $t.Sender } catch { try { $sender = $t.SenderEmailAddress } catch {} }
-                            $subject = ($t.Subject -replace "^(Re:|Fwd:|FW:|RE:)\s*", "").Trim()
-                            $received = $t.ReceivedTime.ToString("yyyyMMddHHmmss")
-                            $bodySample = if ($t.Body) { $t.Body.Substring(0, [Math]::Min($t.Body.Length, 500)).Trim() } else { "" }
-                            $dna = Get-SHA256 "$sender|$subject|$received|$bodySample"
+                            $folderScanned++
+                            $itemSize = try { $t.Size } catch { 0 }
+                            $currentStoreScannedSize += $itemSize
                             
-                            $itemObj = @{ entryId=$t.EntryID; subject=$t.Subject; sender=$sender; timestamp=$t.ReceivedTime.ToString("yyyy-MM-dd HH:mm:ss"); size=$t.Size; folder=$f.Name; store=$storeName; dna=$dna }
+                            $subject = "No Subject"; try { if ($t.Subject) { $subject = $t.Subject } } catch {}
+                            
+                            Write-Output (@{type="duplicate-update"; status="Scanned"; scanned=$Global:DupScannedCount; found=$Global:DupResults.Count; folderProgress="$folderScanned/$totalInFolder"; currentFolder=$f.Name; currentItem=$subject; store=$storeName; storeScanned=$currentStoreScannedItems; storeScannedSize=$currentStoreScannedSize} | ConvertTo-Json -Compress)
+
+                            $sender = "Unknown"; try { $sender = Resolve-Email -Recipient $t.Sender } catch { try { $sender = $t.SenderEmailAddress } catch {} }
+                            $cleanSubject = ($subject -replace "^(Re:|Fwd:|FW:|RE:)\s*", "").Trim()
+                            $received = "00000000000000"; try { if ($t.ReceivedTime) { $received = $t.ReceivedTime.ToString("yyyyMMddHHmmss") } } catch {}
+                            $bodySample = ""; try { if ($t.Body) { $bodySample = $t.Body.Substring(0, [Math]::Min($t.Body.Length, 300)).Trim() } } catch {}
+                            
+                            $dna = Get-SHA256 "$sender|$cleanSubject|$received|$bodySample"
+                            $itemObj = @{ entryId=$t.EntryID; subject=$subject; sender=$sender; timestamp=$t.ReceivedTime.ToString("yyyy-MM-dd HH:mm:ss"); size=$itemSize; folder=$f.Name; store=$storeName; dna=$dna }
+                            
                             if (!$Global:DupHashes.ContainsKey($dna)) { $Global:DupHashes[$dna] = $itemObj }
                             else {
                                 $survivor = $Global:DupHashes[$dna]
-                                if ($itemObj.size -gt $survivor.size) { 
-                                    [void]$Global:DupResults.Add($survivor); 
-                                    $Global:DupHashes[$dna] = $itemObj 
-                                } else { 
-                                    [void]$Global:DupResults.Add($itemObj) 
-                                }
-                                Write-Output (@{type="duplicate-update"; status="Found"; count=$Global:DupResults.Count; current=$itemObj.subject} | ConvertTo-Json -Compress)
+                                if ($itemObj.size -gt $survivor.size) { [void]$Global:DupResults.Add($survivor); $Global:DupHashes[$dna] = $itemObj }
+                                else { [void]$Global:DupResults.Add($itemObj) }
+                                Write-Output (@{type="duplicate-update"; status="Found"; count=$Global:DupResults.Count; current=$itemObj.subject; scanned=$Global:DupScannedCount} | ConvertTo-Json -Compress)
                             }
                         } catch {}
                         Release-Com $t
+                        if ($folderScanned % 100 -eq 0) { Start-Sleep -Milliseconds 10 }
                     }
                     Release-Com $items
                 }
-                try { $flds = $f.Folders; if ($flds) { foreach ($sub in $flds) { $Global:DupStack.Push(@{Folder=$sub; Store=$storeName}) }; Release-Com $flds } } catch {}
                 Release-Com $f
             }
 
             if ($Global:DupStack.Count -eq 0) {
+                if ($currentStoreName -ne "") {
+                    Write-Output (@{type="duplicate-update"; status="StoreFinish"; store=$currentStoreName; found=$Global:DupResults.Count; scanned=$currentStoreScannedItems; size=$currentStoreScannedSize} | ConvertTo-Json -Compress)
+                }
                 Write-Output (@{type="duplicate-update"; status="Finished"; items=$Global:DupResults} | ConvertTo-Json -Compress)
-                # Clear state for next fresh scan
                 $Global:DupStack = $null
             }
         }
@@ -258,16 +282,9 @@ if ($Mode -eq "Worker") {
             foreach ($id in $Ex.entryIds) {
                 try {
                     $item = $N.GetItemFromID($id)
-                    if ($item) {
-                        $subj = $item.Subject
-                        $item.Delete()
-                        $count++
-                        Log-Progress "Worker: Successfully deleted redundant copy: $subj"
-                        Release-Com $item
-                    }
+                    if ($item) { $subj = $item.Subject; $item.Delete(); $count++; Release-Com $item }
                 } catch {}
             }
-            Log-Progress "Worker: Batch cleanup complete. $count items removed."
             Write-Output (@{type="delete-summary"; count=$count} | ConvertTo-Json -Compress)
         }
     }
@@ -318,7 +335,7 @@ function Process-Batch {
 }
 
 $AnalysisScript = {
-    param($itemData, $sk, $ru, $wl, $bl, $Vk)
+    param($itemData, $sk, $ru, $wl, $bl, $Vk, $Til)
     $sc = 0.0; $hits = New-Object System.Collections.Generic.List[string]; $W = $ru.weights; $T = $ru.toggles
     $Se = $itemData.Se; $IP = $itemData.IP; $Do = $itemData.Do; $bare = if ($Se -match "<(.+)>$") { $Matches[1] } else { $Se }; $combo = "$IP|$Do"
     if ($wl.emails -contains $bare -or $wl.ips -contains $IP -or $wl.domains -contains $Do -or $wl.combos -contains $combo) { return @{ mv = "CLEAN"; verdict = "Safe"; score = 100; tier = "Whitelisted" } }
@@ -328,12 +345,33 @@ $AnalysisScript = {
     if ($T.dkim) { if ($itemData.Hs -match "dkim=fail") { $sc += ($W.dkim / 10.0); [void]$hits.Add("DKIM:FAIL") } }
     if ($T.heuristics) { foreach ($kw in $sk) { if ($itemData.Su -match [regex]::Escape($kw) -or $itemData.by -match [regex]::Escape($kw)) { $sc += ($W.heuristics / 10.0); [void]$hits.Add("HEURISTICS:MATCH($kw)"); break } } }
     $score = [Math]::Max(0, (100 - ($sc * 10)))
+
+    $triggerMalwareScan = $false
+    if ($Til -eq 2) { $triggerMalwareScan = $true }
+    elseif ($Til -eq 1 -and $score -lt 65) { $triggerMalwareScan = $true }
+
+    if ($triggerMalwareScan) {
+        $malwareHits = New-Object System.Collections.Generic.List[string]
+        if (![string]::IsNullOrEmpty($itemData.by)) { 
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($itemData.by)
+            $h = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+            $bodyHash = [System.BitConverter]::ToString($h).Replace("-", "").ToLower()
+            [void]$malwareHits.Add("BODY_HASH:$bodyHash")
+        }
+        if ($itemData.Attachments -and $itemData.Attachments.Count -gt 0) {
+            foreach ($at in $itemData.Attachments) {
+                if ($at.hash -and $at.hash -ne "N/A") { [void]$malwareHits.Add("FILE_HASH:$($at.name):$($at.hash)") }
+            }
+        }
+        if ($malwareHits.Count -gt 0) { [void]$hits.Add("ADVANCED_INTEL(" + ([string]::Join(", ", $malwareHits)) + ")") }
+    }
+
     $verdict = if ($score -le 20) { "Malicious" } elseif ($score -le $ru.spamThresholdPercent) { "Spam" } else { "Safe" }
     return @{ mv = if ($verdict -eq "Malicious") { "MALICIOUS" } elseif ($verdict -eq "Spam") { "SPAM" } else { "CLEAN" }; verdict = $verdict; score = $score; tier = ([string]::Join(" | ", $hits) -replace "^$", "Analysis Complete") }
 }
 
 Send-Heartbeat; $C = [Console]::In.ReadLine(); if (!$C) { exit }
-$Ex = $C | ConvertFrom-Json; $sk = $Ex.spamKeywords; $ru = $Ex.rubrics; $wl = $Ex.whitelist; $bl = $Ex.blacklist; $Vk = $Ex.vtKey
+$Ex = $C | ConvertFrom-Json; $sk = $Ex.spamKeywords; $ru = $Ex.rubrics; $wl = $Ex.whitelist; $bl = $Ex.blacklist; $Vk = $Ex.vtKey; $Til = $Ex.threatIntelligenceLevel
 if ($Ex.releasedFingerprints) { foreach ($fp in $Ex.releasedFingerprints) { [void]$Global:ReleasedFingerprints.Add($fp) } }
 $ps = New-Object System.Collections.Generic.HashSet[string]; foreach ($id in $Ex.processedIds) { [void]$ps.Add($id) }
 
@@ -348,8 +386,8 @@ while ($stack.Count -gt 0) {
         foreach ($t in $items) {
             $fData = Parse-Forensics $t; $fp = Get-Fingerprint -item $t -ip $fData.ip
             if ($ps.Contains($fp) -or $Global:ReleasedFingerprints.Contains($fp)) { Release-Com $t; continue }
-            $itemData = @{ Id=$t.EntryID; Su=$t.Subject; Se=$fData.from; IP=$fData.ip; Hs=$fData.headers; by=$fData.body; Finger=$fp }
-            $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk)
+            $itemData = @{ Id=$t.EntryID; Su=$t.Subject; Se=$fData.from; IP=$fData.ip; Hs=$fData.headers; by=$fData.body; Finger=$fp; Attachments=$fData.attachments }
+            $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Til)
             $psi.RunspacePool = $RunspacePool; [void]$CurrentBatch.Add(@{ PS=$psi; Handle=$psi.BeginInvoke(); Data=$itemData })
             if ($CurrentBatch.Count -ge 8) { Process-Batch }
             Release-Com $t
@@ -370,8 +408,8 @@ while ($true) {
         if ($t) {
             $fData = Parse-Forensics $t; $fp = Get-Fingerprint -item $t -ip $fData.ip
             if ($ps.Contains($fp) -or $Global:ReleasedFingerprints.Contains($fp)) { Release-Com $t; continue }
-            $itemData = @{ Id=$id; Su=$t.Subject; Se=$fData.from; IP=$fData.ip; Hs=$fData.headers; by=$fData.body; Finger=$fp }
-            $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk)
+            $itemData = @{ Id=$id; Su=$t.Subject; Se=$fData.from; IP=$fData.ip; Hs=$fData.headers; by=$fData.body; Finger=$fp; Attachments=$fData.attachments }
+            $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Til)
             $psi.RunspacePool = $RunspacePool; [void]$CurrentBatch.Add(@{ PS=$psi; Handle=$psi.BeginInvoke(); Data=$itemData })
         }
         Release-Com $t

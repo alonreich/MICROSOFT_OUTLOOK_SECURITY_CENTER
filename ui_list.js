@@ -1,4 +1,5 @@
-(function() {
+window.SecurityUI = window.SecurityUI || {};
+SecurityUI.List = (function() {
     const api = window.securityApi;
     const store = window.AppStore;
 
@@ -37,7 +38,10 @@
         );
     }
 
+    let lastRenderedContent = "";
+
     window.renderList = function() {
+        const list = document.getElementById('threat-list');
         const cat = store.currentCategory;
         let allItems = (store.stats[cat] || []);
 
@@ -75,84 +79,107 @@
         document.getElementById('pg-next').disabled = store.currentPage === totalPages;
         document.getElementById('pg-last').disabled = store.currentPage === totalPages;
 
-        const list = document.getElementById('threat-list');
         if (allItems.length === 0) { 
             list.innerHTML = `
                 <div class="empty-state">
                     <svg class="empty-icon" viewBox="0 0 24 24"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>
                     <div class="empty-text">SYSTEM SECURE: NO THREATS IN THIS CATEGORY</div>
                 </div>`; 
-        } else {
-            const frag = document.createDocumentFragment();
-            items.forEach((i, index) => {
-                const id = i.entryId || i.fingerprint;
-                const ts = i.timestamp || "", [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""];
-                let sub = i.subject || i.details || "No Subject";
-                const movingStyle = i.isMoving ? 'opacity:0.5; pointer-events:none;' : '';
-                if (i.isMoving) sub = `<span style="color:var(--accent); font-size:0.6rem; margin-right:8px;">[VERIFYING MOVE...]</span>` + sub;
+            lastRenderedContent = "";
+            return;
+        }
 
-                const row = document.createElement('div');
-                row.className = `list-item ${store.selectedIds.has(id)?'selected':''}`;
-                row.dataset.id = id;
-                row.dataset.index = index;
-                if (movingStyle) row.style.cssText = movingStyle;
-                
-                row.innerHTML = `
-                    <div class="col-check"><input type="checkbox" ${store.selectedIds.has(id)?'checked':''} onclick="event.stopPropagation()"></div>
-                    <div title="${window.escapeHTML(sub)}" style="text-align:left; font-weight:600;">${window.escapeHTML(sub)}</div>
-                    <div>${window.escapeHTML(d)}</div>
-                    <div>${window.escapeHTML(t)}</div>
-                    <div style="font-family:monospace; font-size:0.75rem;">${window.escapeHTML(i.ip||'N/A')}</div>
-                    <div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score||100)}%</div>
-                    <div style="font-weight:700; color:var(--ok);">${window.escapeHTML(i.action||'None')}</div>
-                    <div title="${window.escapeHTML(i.tier||'')}" style="color:var(--muted); font-style:italic; font-size:0.7rem;">${window.escapeHTML(i.tier||'Analysis Complete')}</div>
-                `;
-                
-                row.onclick = (e) => { 
-                    if (e.shiftKey && store.lastSelectedIndex !== -1) {
-                        const start = Math.min(store.lastSelectedIndex, index);
-                        const end = Math.max(store.lastSelectedIndex, index);
-                        for (let k = start; k <= end; k++) {
-                            const item = items[k];
-                            store.selectedIds.add(item.entryId || item.fingerprint);
-                        }
-                    } else {
-                        if (!e.ctrlKey) store.selectedIds.clear();
-                        if (store.selectedIds.has(id)) store.selectedIds.delete(id);
-                        else store.selectedIds.add(id);
-                        store.lastSelectedIndex = index;
+        const frag = document.createDocumentFragment();
+        items.forEach((i, index) => {
+            const id = i.entryId || i.fingerprint;
+            const ts = i.timestamp || "", [d, t] = ts.includes(' ') ? ts.split(' ') : [ts, ""];
+            let sub = i.subject || i.details || "No Subject";
+            const movingStyle = i.isMoving ? 'opacity:0.5; pointer-events:none;' : '';
+            if (i.isMoving) sub = `<span style="color:var(--accent); font-size:0.6rem; margin-right:8px;">[VERIFYING MOVE...]</span>` + sub;
+
+            const row = document.createElement('div');
+            row.className = `list-item ${store.selectedIds.has(id)?'selected':''}`;
+            row.dataset.id = id;
+            row.dataset.index = index;
+            if (movingStyle) row.style.cssText = movingStyle;
+            
+            row.innerHTML = `
+                <div class="col-check"><input type="checkbox" ${store.selectedIds.has(id)?'checked':''} onclick="event.stopPropagation()"></div>
+                <div title="${window.escapeHTML(sub)}" style="text-align:left; font-weight:600;">${window.escapeHTML(sub)}</div>
+                <div>${window.escapeHTML(d)}</div>
+                <div>${window.escapeHTML(t)}</div>
+                <div style="font-family:monospace; font-size:0.75rem;">${window.escapeHTML(i.ip||'N/A')}</div>
+                <div style="font-family:monospace; color:var(--accent); font-weight:900;">${Math.round(i.score||100)}%</div>
+                <div style="font-weight:700; color:var(--ok);">${window.escapeHTML(i.action||'None')}</div>
+                <div title="${window.escapeHTML(i.tier||'')}" style="color:var(--muted); font-style:italic; font-size:0.7rem;">${window.escapeHTML(i.tier||'Analysis Complete')}</div>
+            `;
+            
+            row.onclick = (e) => { 
+                if (e.shiftKey && store.lastSelectedIndex !== -1) {
+                    const start = Math.min(store.lastSelectedIndex, index);
+                    const end = Math.max(store.lastSelectedIndex, index);
+                    for (let k = start; k <= end; k++) {
+                        const item = items[k];
+                        store.selectedIds.add(item.entryId || item.fingerprint);
                     }
-                    window.renderList();
-                }; 
+                } else {
+                    if (!e.ctrlKey) store.selectedIds.clear();
+                    if (store.selectedIds.has(id)) store.selectedIds.delete(id);
+                    else store.selectedIds.add(id);
+                    store.lastSelectedIndex = index;
+                }
+                window.renderList();
+            }; 
+            
+            row.ondblclick = (e) => { 
+                e.preventDefault(); e.stopPropagation(); 
+                window.showForensics(id); 
+            };
+            
+            row.oncontextmenu = (e) => {
+                e.preventDefault();
+                if (!store.selectedIds.has(id)) {
+                    store.selectedIds.clear();
+                    store.selectedIds.add(id);
+                }
+                const menu = document.getElementById('ctx-menu');
+                document.getElementById('ctx-safe-options').style.display = (store.currentCategory === 'safe') ? 'block' : 'none';
+                document.getElementById('ctx-danger-options').style.display = (store.currentCategory !== 'safe') ? 'block' : 'none';
                 
-                row.ondblclick = (e) => { 
-                    e.preventDefault(); e.stopPropagation(); 
-                    window.showForensics(id); 
-                };
-                
-                row.oncontextmenu = (e) => {
-                    e.preventDefault();
-                    if (!store.selectedIds.has(id)) {
-                        store.selectedIds.clear();
-                        store.selectedIds.add(id);
-                    }
-                    const menu = document.getElementById('ctx-menu');
-                    document.getElementById('ctx-safe-options').style.display = (store.currentCategory === 'safe') ? 'block' : 'none';
-                    document.getElementById('ctx-danger-options').style.display = (store.currentCategory !== 'safe') ? 'block' : 'none';
-                    
-                    menu.style.display = 'block';
-                    // Smart Position (Issue 1)
-                    let left = e.pageX, top = e.pageY;
-                    if (left + 250 > window.innerWidth) left -= 250;
-                    if (top + 300 > window.innerHeight) top -= 300;
-                    menu.style.left = left + 'px';
-                    menu.style.top = top + 'px';
-                };
-                frag.appendChild(row);
-            });
+                menu.style.display = 'block';
+                let left = e.pageX, top = e.pageY;
+                if (left + 250 > window.innerWidth) left -= 250;
+                if (top + 300 > window.innerHeight) top -= 300;
+                menu.style.left = left + 'px';
+                menu.style.top = top + 'px';
+            };
+            frag.appendChild(row);
+        });
+
+        // Smart Render: Only update DOM if something actually changed
+        const currentContent = JSON.stringify(items) + Array.from(store.selectedIds).join(',');
+        if (currentContent !== lastRenderedContent) {
             list.innerHTML = '';
             list.appendChild(frag);
+            lastRenderedContent = currentContent;
         }
+        
+        // Update Sort Indicators
+        document.querySelectorAll('.sortable').forEach(h => {
+            const icon = h.querySelector('.sort-icon');
+            if (icon) {
+                if (h.dataset.sort === store.sortConfig.key) {
+                    icon.textContent = store.sortConfig.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+                    icon.style.color = 'var(--accent)';
+                    icon.style.opacity = '1';
+                } else {
+                    icon.textContent = ' \u2195';
+                    icon.style.color = 'var(--muted)';
+                    icon.style.opacity = '0.3';
+                }
+            }
+        });
+    };
         
         // Update Sort Indicators
         document.querySelectorAll('.sortable').forEach(h => {

@@ -165,6 +165,7 @@
                   DUPLICATE EMAIL DETECTION & CLEANUP
               </div>
               <div style="display: flex; gap: 10px;">
+                  <button id="rescan-everything-btn" class="btn-ui" title="RESCAN EVERYTHING: This will wipe the current results and restart the discovery process from scratch.">RESCAN EVERYTHING</button>
                   <button id="scan-duplicates-btn" class="btn-ui success">SCAN MAILBOX</button>
                   <button id="pause-duplicates-btn" class="btn-ui" style="display:none; width:100px;">PAUSE</button>
                   <button id="delete-duplicates-btn" class="btn-ui danger" disabled style="opacity: 0.5;">DELETE SELECTED</button>
@@ -239,7 +240,22 @@
           </div>
 
           <div id="tab-general" class="tab-content active">
-              <div class="section-divider" data-label="Performance Control"></div>
+              <div class="section-divider" data-label="Performance & Malware Defense"></div>
+              
+              <div class="setting-group" style="background: rgba(142, 117, 255, 0.05); padding: 15px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 15px;">
+                  <label style="color: #fff; font-size: 0.85rem; margin-bottom: 5px;"><svg style="width:16px;height:16px;fill:var(--accent)" viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>Threat Intelligence Level:</label>
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
+                      <input type="range" id="threat-intel-slider" min="0" max="2" step="1" list="intel-ticks" style="cursor: pointer;">
+                      <div style="display: flex; justify-content: space-between; font-size: 0.6rem; font-weight: 900; color: var(--muted); padding: 0 5px;">
+                          <span>DISABLE PROTECTION</span>
+                          <span>SMART PROTECTION</span>
+                          <span>ALWAYS PROTECT</span>
+                      </div>
+                      <datalist id="intel-ticks"><option value="0"></option><option value="1"></option><option value="2"></option></datalist>
+                  </div>
+                  <div id="threat-intel-desc" style="font-size: 0.65rem; color: var(--muted); margin-top: 10px; text-align: center; font-style: italic;">SCAN ONLY SUSPECIOUS EMAIL: Deep analysis triggered for scores under 65%. (Recommended)</div>
+              </div>
+
               <div class="setting-group" style="background: rgba(142, 117, 255, 0.05); padding: 15px; border-radius: 10px; border: 1px solid var(--border);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                       <label style="color: #fff; font-size: 0.85rem;"><svg style="width:16px;height:16px;fill:var(--accent)" viewBox="0 0 24 24"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>Scanning Speed:</label>
@@ -417,7 +433,7 @@
     
     <div id="shield-toggle" class="shield-container status-paused">
         <div class="shield-icon">
-            <svg viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
+            <svg viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,11.95V19.19C8.91,18.16 6.65,15.39 6.1,12C6.1,11.97 6.1,11.93 6.1,11.9V11.95H12M17.9,12C17.35,15.39 15.09,18.16 12,19.19V11.95H17.9C17.9,11.93 17.9,11.97 17.9,12Z" /></svg>
         </div>
         <div class="shield-status">
             <span class="shield-label">System Protection</span>
@@ -477,17 +493,8 @@
     <span id="activity-text">SYSTEM READY: WAITING FOR THREATS...</span>
   </div>
 
-  <script src="ui_settings.js"></script>
-  <script src="ui_engines.js"></script>
-  <script src="ui_forensics.js"></script>
-  <script src="ui_history.js"></script>
-  <script src="ui_list.js"></script>
-  <script src="ui_reset.js"></script>
-  <script src="ui_duplicates.js"></script>
   <script>
-    const api = window.securityApi;
-    
-    // ENTERPRISE STATE MANAGER
+    // ENTERPRISE STATE MANAGER (Must be initialized BEFORE modular scripts)
     window.AppStore = {
         stats: { malicious: [], suspicious: [], spam: [], safe: [] },
         selectedIds: new Set(),
@@ -499,6 +506,15 @@
         currentPage: 1,
         pageSize: 50,
         pendingActions: new Set(),
+        duplicateState: {
+            items: [],
+            scannedCount: 0,
+            storesMeta: {},
+            isScanning: false,
+            isPaused: false,
+            progress: 0,
+            logs: []
+        },
         
         updateStats(newData) {
             for (const cat in newData) {
@@ -510,7 +526,7 @@
         },
         
         render() {
-            window.renderList();
+            if (window.renderList) window.renderList();
             this.updateCounterUI();
         },
 
@@ -521,7 +537,16 @@
             });
         }
     };
-
+  </script>
+  <script src="ui_settings.js"></script>
+  <script src="ui_engines.js"></script>
+  <script src="ui_forensics.js"></script>
+  <script src="ui_history.js"></script>
+  <script src="ui_list.js"></script>
+  <script src="ui_reset.js"></script>
+  <script src="ui_duplicates.js"></script>
+  <script>
+    const api = window.securityApi;
     const list = document.getElementById('threat-list'), tooltipEl = document.getElementById('tooltip');
 
     window.escapeHTML = function escapeHTML(str) { if (!str) return ""; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
@@ -530,19 +555,21 @@
         if (!msg) return; 
         const div = document.createElement('div'); 
         div.textContent = msg; 
-        modalLogContainer.appendChild(div); 
-        if (modalLogContainer.childNodes.length > 1000) modalLogContainer.removeChild(modalLogContainer.firstChild); 
-        modalLogContainer.scrollTop = modalLogContainer.scrollHeight; 
+        const modalLogContainer = document.getElementById('modal-log-container');
+        if (modalLogContainer) {
+            modalLogContainer.appendChild(div); 
+            if (modalLogContainer.childNodes.length > 1000) modalLogContainer.removeChild(modalLogContainer.firstChild); 
+            modalLogContainer.scrollTop = modalLogContainer.scrollHeight; 
+        }
         
-        // Granular Heartbeat (Issue 4)
         if (msg.includes('Scanning:') || msg.includes('Checking:')) {
             document.getElementById('activity-text').textContent = msg.replace('Worker:', '').replace('Engine:', '').trim();
         }
     }
 
-    document.getElementById('audit-logs-btn').onclick = () => auditLogsModal.style.display = 'flex';
-    document.getElementById('close-audit-logs').onclick = () => auditLogsModal.style.display = 'none';
-    document.getElementById('clear-logs-btn').onclick = () => modalLogContainer.innerHTML = '';
+    document.getElementById('audit-logs-btn').onclick = () => document.getElementById('audit-logs-modal').style.display = 'flex';
+    document.getElementById('close-audit-logs').onclick = () => document.getElementById('audit-logs-modal').style.display = 'none';
+    document.getElementById('clear-logs-btn').onclick = () => document.getElementById('modal-log-container').innerHTML = '';
     document.getElementById('open-logs-folder-btn').onclick = () => api.openLogsFolder();
 
     // Tab Switching Logic
@@ -555,6 +582,7 @@
         };
     });
 
+    let colWidths = { check: 40, subject: 280, date: 100, time: 80, ip: 120, verdict: 100, score: 80, action: 150, reasoning: 300 };
     function applyColWidths() { 
         const root = document.documentElement; 
         Object.keys(colWidths).forEach(k => {
@@ -614,7 +642,7 @@
             if (card && !card.classList.contains('active')) card.click();
         }
         
-        window.renderList(); 
+        if (window.renderList) window.renderList(); 
     }
     
     window.showNotification = (text, isError = false) => {
@@ -690,7 +718,6 @@
             const fp = d.fingerprint || d.entryId;
             const originalId = d.originalEntryId;
             
-            // Remove from all existing categories
             ['malicious','suspicious','spam','safe'].forEach(c => {
                 window.AppStore.stats[c] = window.AppStore.stats[c].filter(x => 
                     (x.fingerprint || x.entryId) !== fp && 
@@ -698,7 +725,6 @@
                 );
             });
             
-            // Add to the new category
             if (window.AppStore.stats[newCat]) {
                 window.AppStore.stats[newCat].push(d);
                 window.updateDashboard(window.AppStore.stats);
@@ -729,7 +755,7 @@
         window.AppStore.isOutlookConnected = running;
         const dot = document.getElementById('outlook-dot'), text = document.getElementById('outlook-text'); 
         if(dot){ dot.style.background = running ? 'var(--ok)' : 'var(--danger)'; text.textContent = running ? 'OUTLOOK: CONNECTED' : 'OUTLOOK: DISCONNECTED'; } 
-        api.onStatusSync(window.AppStore.isProtectionEnabled); // Refresh shield
+        api.onStatusSync(window.AppStore.isProtectionEnabled); 
     });
 
     api.onStatsUpdate(d => { if (d.full) updateDashboard(d.stats); });

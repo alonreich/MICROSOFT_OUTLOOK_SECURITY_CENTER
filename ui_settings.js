@@ -1,5 +1,13 @@
-(function() {
+window.SecurityUI = window.SecurityUI || {};
+SecurityUI.Settings = (function() {
     const api = window.securityApi;
+
+    const intelTips = [
+        "DISABLE PROTECTION: No deep malware scans. API engines used for spam identification only.",
+        "SCAN ONLY SUSPECIOUS EMAIL: Deep analysis triggered for scores under 65%. (Recommended)",
+        "ALWAYS PROTECT: Mandatory SHA256 hashing and API verification for every single email."
+    ];
+
     window.syncSettingsUI = async () => {
         const cfg = await api.getConfig(); 
         const vt = document.getElementById('vt-api-key');
@@ -24,6 +32,13 @@
         if (sk) sk.value = (cfg.spamKeywords || []).join('\n');
         const la = document.getElementById('launch-at-startup');
         if (la) la.checked = !!cfg.launchAtStartup;
+
+        const intel = cfg.threatIntelligenceLevel !== undefined ? cfg.threatIntelligenceLevel : 1;
+        const intelSlider = document.getElementById('threat-intel-slider');
+        if (intelSlider) {
+            intelSlider.value = intel;
+            document.getElementById('threat-intel-desc').textContent = intelTips[intel];
+        }
         
         const speed = cfg.scanningSpeed !== undefined ? cfg.scanningSpeed : 50;
         const slider = document.getElementById('scanning-speed-slider');
@@ -41,11 +56,21 @@
         window.showNotification(`Scanning Engine Speed set to ${e.target.value}%`);
     };
 
+    document.getElementById('threat-intel-slider').oninput = (e) => {
+        document.getElementById('threat-intel-desc').textContent = intelTips[e.target.value];
+    };
+
     document.getElementById('reset-performance-btn').onclick = async () => {
         const slider = document.getElementById('scanning-speed-slider');
         slider.value = 50;
         document.getElementById('scanning-speed-val').textContent = '50%';
         await api.setScanningSpeed(50);
+        
+        const intelSlider = document.getElementById('threat-intel-slider');
+        intelSlider.value = 1;
+        document.getElementById('threat-intel-desc').textContent = intelTips[1];
+        await api.setThreatIntelLevel(1);
+
         window.showNotification('Performance profile reset to balanced defaults.');
     };
 
@@ -158,6 +183,7 @@
         await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: wlc });
         await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: blc });
         await api.setStartup(startup);
+        await api.setThreatIntelLevel(parseInt(document.getElementById('threat-intel-slider').value));
         
         window.showNotification('Security policy and system settings saved.');
         document.getElementById('settings-modal').style.display = 'none';

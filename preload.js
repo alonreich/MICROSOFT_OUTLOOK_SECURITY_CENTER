@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('securityApi', {
     saveColumnWidths: value => invoke('save-column-widths', value),
     setScanningSpeed: value => invoke('set-scanning-speed', value),
     setStartup: value => invoke('set-startup', value),
+    setThreatIntelLevel: value => invoke('set-threat-intel-level', value),
     exportConfig: () => invoke('export-config'),
     importConfig: () => invoke('import-config'),
     openLogsFolder: () => invoke('open-logs-folder'),
@@ -40,6 +41,8 @@ contextBridge.exposeInMainWorld('securityApi', {
     pauseDuplicateScan: () => invoke('pause-duplicate-scan'),
     resumeDuplicateScan: () => invoke('resume-duplicate-scan'),
     deleteDuplicates: (data) => invoke('delete-duplicates', data),
-    onDuplicateUpdate: callback => ipcRenderer.on('duplicate-update', (event, data) => callback(data))
+    resetDuplicateEngine: () => invoke('reset-duplicate-engine'),
+    onDuplicateUpdate: callback => ipcRenderer.on('duplicate-update', (event, data) => callback(data)),
+    scanForViruses: (id) => invoke('scan-virus', id)
 });
 
