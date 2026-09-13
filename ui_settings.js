@@ -260,8 +260,10 @@ SecurityUI.Settings = (function() {
             try {
                 const startupEnabled = document.getElementById('cfg-startup').checked;
                 const onAccessEnabled = document.getElementById('cfg-onaccess').checked;
-                const historyScanEnabled = document.getElementById('cfg-ondemand').checked;
-                const deepHistoryScanEnabled = document.getElementById('cfg-deephistory').checked;
+                const onDemandChecked = document.getElementById('cfg-ondemand').checked;
+                const deepHistoryChecked = document.getElementById('cfg-deephistory').checked;
+                const historyScanEnabled = onDemandChecked || deepHistoryChecked;
+                const deepHistoryScanEnabled = deepHistoryChecked;
 
                 await api.setEnabled(document.getElementById('cfg-enabled').checked);
                 await api.setStartup(startupEnabled);

@@ -436,7 +436,7 @@ function Get-Outlook {
 function Init-Exclusions {
     param($Namespace)
     if ($null -eq $Global:ExcludedFolderIds) { $Global:ExcludedFolderIds = New-Object System.Collections.Generic.HashSet[string] }
-    $folderIds = @(3, 4, 5, 16, 23)
+    $folderIds = @(3, 4, 16, 23)
     $stores = $null
     try {
         $stores = $Namespace.Stores
@@ -1902,7 +1902,7 @@ try {
     # FULL SCAN / HISTORY LOGIC
     if ($Ex.mode -eq "History") {
         Log-Progress "Forensic Discovery: Starting master mailbox crawl..."
-        $stack = New-Object System.Collections.Generic.Stack[object]
+        $queue = New-Object System.Collections.Generic.Queue[object]
         $totalCount = 0
         $historyStores = $null
         try {
@@ -1920,11 +1920,12 @@ try {
                                     $subItems = $null
                                     try {
                                         $subItems = $sub.Items
-                                        $totalCount += $subItems.Count
-                                        $stack.Push(@{
+                                        $cnt = $subItems.Count
+                                        $totalCount += $cnt
+                                        $queue.Enqueue(@{
                                             FolderId = $sub.EntryID
                                             StoreId = $S.StoreID
-                                            FolderName = $sub.Name
+                                            FolderName = "$($S.DisplayName): $($sub.Name)"
                                             DefaultItemType = $sub.DefaultItemType
                                         })
                                     } catch {}
@@ -1940,9 +1941,16 @@ try {
             Release-Com $historyStores
         }
 
+        $isDeep = ($null -ne $Ex.deepHistoryScanEnabled -and ($Ex.deepHistoryScanEnabled -eq $true -or "$($Ex.deepHistoryScanEnabled)" -eq "True" -or $Ex.deepHistoryScanEnabled -eq 1))
+        $demandLimit = if ($Ex.onDemandLimit -gt 0) { [int]$Ex.onDemandLimit } else { 1000 }
         $currentCount = 0
-        while ($stack.Count -gt 0) {
-            $fDesc = $stack.Pop()
+
+        while ($queue.Count -gt 0) {
+            $fDesc = $queue.Dequeue()
+            if ($Global:ExcludedFolderIds.Contains($fDesc.FolderId)) {
+                continue
+            }
+
             $f = $null
             $fItems = $null
             $fSubs = $null
@@ -1950,51 +1958,73 @@ try {
                 $f = Invoke-OutlookMethod { $N.GetFolderFromID($fDesc.FolderId, $fDesc.StoreId) }
                 if ($f) {
                     if ($fDesc.DefaultItemType -eq 0) {
-                        $fItems = $f.Items
-                        # MANDATORY CHRONOLOGICAL SORTING: NEWEST TO OLDEST
-                        try {
-                            Invoke-OutlookMethod { $fItems.Sort("[ReceivedTime]", $true) }
-                        } catch {}
                         $entryIds = New-Object System.Collections.Generic.List[string]
-                        $itemCount = 0
-                        try { $itemCount = Invoke-OutlookMethod { $fItems.Count } } catch {}
-                        $limit = if ($Ex.deepHistoryScanEnabled -eq $true) { $itemCount } elseif ($Ex.onDemandLimit -gt 0) { [int]$Ex.onDemandLimit } else { 1000 }
-                        $scanTarget = [Math]::Min($itemCount, $limit)
-                        if ($scanTarget -gt 0) {
-                            for ($i = 1; $i -le $scanTarget; $i++) {
+                        $table = $null
+                        try {
+                            $table = Invoke-OutlookMethod { $f.GetTable() }
+                        } catch {}
+
+                        if ($table) {
+                            try {
+                                Invoke-OutlookMethod { $table.Sort("[ReceivedTime]", $true) }
+                            } catch {}
+
+                            $unscannedFound = 0
+                            while (!$table.EndOfTable) {
+                                Send-Heartbeat
+                                $row = $null
+                                try {
+                                    $row = $table.GetNextRow()
+                                    if ($row) {
+                                        $eid = $row.Item("EntryID")
+                                        if ($eid -and ![string]::IsNullOrEmpty($eid)) {
+                                            $eidStr = [string]$eid
+                                            [void]$entryIds.Add($eidStr)
+                                            if (!$ps.Contains($eidStr)) {
+                                                $unscannedFound++
+                                            }
+                                            if (!$isDeep -and $unscannedFound -ge $demandLimit) {
+                                                break
+                                            }
+                                        }
+                                    }
+                                } catch {}
+                            }
+                            Release-Com $table
+                        } else {
+                            $fItems = $null
+                            try {
+                                $fItems = $f.Items
+                                try {
+                                    Invoke-OutlookMethod { $fItems.Sort("[ReceivedTime]", $true) }
+                                } catch {}
+                                $unscannedFound = 0
                                 $it = $null
                                 try {
-                                    $it = Invoke-OutlookMethod { $fItems.Item($i) }
-                                    if ($it) {
+                                    $it = Invoke-OutlookMethod { $fItems.GetFirst() }
+                                    while ($null -ne $it) {
+                                        Send-Heartbeat
                                         $eid = $null
                                         try { $eid = $it.EntryID } catch {}
                                         if (![string]::IsNullOrEmpty($eid)) {
-                                            [void]$entryIds.Add($eid)
+                                            $eidStr = [string]$eid
+                                            [void]$entryIds.Add($eidStr)
+                                            if (!$ps.Contains($eidStr)) {
+                                                $unscannedFound++
+                                            }
                                         }
+                                        Release-Com $it
+                                        if (!$isDeep -and $unscannedFound -ge $demandLimit) {
+                                            break
+                                        }
+                                        $it = Invoke-OutlookMethod { $fItems.GetNext() }
                                     }
                                 } catch {}
                                 finally { Release-Com $it }
+                            } finally {
+                                Release-Com $fItems
                             }
                         }
-                        if ($entryIds.Count -eq 0 -and $scanTarget -gt 0) {
-                            $idx = 0
-                            foreach ($it in $fItems) {
-                                try {
-                                    $idx++
-                                    if ($idx -gt $scanTarget) { break }
-                                    if ($it) {
-                                        $eid = $null
-                                        try { $eid = $it.EntryID } catch {}
-                                        if (![string]::IsNullOrEmpty($eid)) {
-                                            [void]$entryIds.Add($eid)
-                                        }
-                                    }
-                                } catch {}
-                                finally { Release-Com $it }
-                            }
-                        }
-                        Release-Com $fItems
-                        $fItems = $null
 
                         foreach ($entryId in $entryIds) {
                             # --- ON-ACCESS PRIORITY PREEMPTION ---
@@ -2057,31 +2087,36 @@ try {
                         }
                     }
 
-                    $fSubs = $f.Folders
-                    if ($fSubs) {
-                        foreach ($sub in $fSubs) {
-                            $subItems = $null
-                            try {
-                                $subItems = $sub.Items
-                                $totalCount += $subItems.Count
-                                $stack.Push(@{
-                                    FolderId = $sub.EntryID
-                                    StoreId = $fDesc.StoreId
-                                    FolderName = $sub.Name
-                                    DefaultItemType = $sub.DefaultItemType
-                                })
-                            } catch {}
-                            finally {
-                                Release-Com $subItems
-                                Release-Com $sub
+                    # Recursive subfolder discovery
+                    $fSubs = $null
+                    try {
+                        $fSubs = Invoke-OutlookMethod { $f.Folders }
+                        if ($fSubs) {
+                            foreach ($sub in $fSubs) {
+                                $subItems = $null
+                                try {
+                                    $subItems = $sub.Items
+                                    $cnt = $subItems.Count
+                                    $totalCount += $cnt
+                                    $queue.Enqueue(@{
+                                        FolderId = $sub.EntryID
+                                        StoreId = $fDesc.StoreId
+                                        FolderName = "$($fDesc.FolderName) / $($sub.Name)"
+                                        DefaultItemType = $sub.DefaultItemType
+                                    })
+                                } catch {}
+                                finally {
+                                    Release-Com $subItems
+                                    Release-Com $sub
+                                }
                             }
                         }
-                    }
+                    } catch {}
+                    finally { Release-Com $fSubs }
                 }
             } catch {}
             finally {
                 Release-Com $fItems
-                Release-Com $fSubs
                 Release-Com $f
             }
         }

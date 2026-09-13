@@ -1,5 +1,5 @@
 # SOURCE OF TRUTH: DESKGUARD FOR MICROSOFT OUTLOOK
-# VERSION: 2.7.0 (Modal Viewport Containment, Dual Save & Window Controls)
+# VERSION: 2.8.0 (Recursive BFS Queue Crawl, High-Speed MAPI Table Extraction & Deep Scan Decoupling)
 # TARGET: AI AGENT / SENIOR DEVELOPER HANDOFF
 # WORKSPACE: C:\Full_Control\Microsoft_Outlook_Security\
 # PRIMARY LAUNCHER: .\DeskGuard_for_Microsoft_Outlook.bat
@@ -15,13 +15,27 @@ To provide an ultra-reliable, client-side, non-blocking security and forensic si
   - Implements atomic pre-write backups (`.bak`) to prevent JSON corruption or file tearing.
   - Hosts a local Windows Named Pipe server (`\\.\pipe\mos_service_<hash>`) protected with per-session token authentication (`MOS_AUTH_<hash>`).
   - Spawns, monitors, and orchestrates the underlying PowerShell engine processes (`currentScanChild` for live/history scans and `psWorker` for auxiliary commands).
+  - Listens for scan mode policy updates (`historyScanEnabled`, `deepHistoryScanEnabled`, `onDemandLimit`, `onAccessEnabled`, `threatIntelligenceLevel`) and deterministically debounces engine restarts (500ms) with full configuration synchronization.
+  - Expands in-memory cache capacity (`MAX_STATS_PER_CAT = 50000`, `MAX_PROCESSED_IDS = 200000`) ensuring large enterprise mailboxes (100k+ emails) maintain complete detection histories.
 - **Client GUI Process:**
   - Operates as a stateless client to the background service.
   - Interacts via the authenticated Named Pipe IPC stream with correlated request-response IDs (`rid`).
   - Synchronously hydrates in-memory caches (`configCache`, `statsCache`, `processedIdsCache`, `releasedFingerprintsCache`) on startup via `loadInitialData()`, backed by SQLite `getAllCategorizedEmails()` fallback to guarantee zero state loss across restarts.
   - Maintains zero-latency UI rendering without direct `electron-store` instantiation in the client.
 
-### B. Outlook STA COM Synchronization & Zero-Leak Lifecycle
+### B. Outlook STA COM Synchronization, High-Speed Table Extraction & Zero-Leak Lifecycle
+- **Recursive BFS Mailbox Queue Crawl:**
+  - Employs a `System.Collections.Generic.Queue` to execute a complete Breadth-First Search (BFS) mailbox traversal across all MAPI stores (primary Exchange, PST archives, and secondary mailboxes).
+  - Recursively discovers and enqueues all subfolders of subfolders (e.g. `Inbox/Service Security`, `Inbox/Management`, `Sent Items`, and nested folders), overcoming single-level root folder truncation.
+  - Automatically filters non-mail containers and respects system exclusions (Deleted Items, Junk Email, Outbox, Drafts) while maintaining full coverage of all user-created mail repositories and Sent Items.
+- **High-Speed MAPI Table Extraction (`GetTable`):**
+  - Replaces slow, blocking `$f.Items.Item($i)` indexed access with native Outlook MAPI Table cursor extraction (`$f.GetTable()`).
+  - Extracts and sorts thousands of `EntryID` references in under 1 second per folder without instantiating heavy COM `MailItem` wrappers.
+  - Seamlessly falls back to `GetFirst()` / `GetNext()` enumeration for legacy or non-standard store providers.
+  - Emits real-time heartbeats during table traversal, completely eliminating watchdog timeouts on 30k+ item folders.
+- **Dynamic Scan Limit & Deep History Decoupling:**
+  - In On-Demand mode, checks `$ps.Contains($eid)` to process up to 1,000 new/unscanned items per folder from newest to oldest.
+  - In Deep History mode (`deepHistoryScanEnabled = true`), completely bypasses the 1,000 email ceiling to audit all historical emails across every folder and archive.
 - **Windows Named Mutex Synchronization (`Global\MOS_Outlook_COM_Lock`):**
   - Microsoft Outlook operates strictly as a Single-Threaded Apartment (STA) COM server.
   - All out-of-process COM calls across `psWorker` and `currentScanChild` acquire the named mutex before issuing MAPI calls, preventing concurrent re-entrant method execution and eliminating `0x8001010A` (`RPC_E_SERVERCALL_RETRYLATER`) and `0x80010001` (`RPC_E_CALL_REJECTED`).

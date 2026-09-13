@@ -383,7 +383,7 @@ async function serviceSetStore(key, value) {
             config: configStore.store
         });
 
-        if (key === 'enabled' || key === 'historyScanEnabled') {
+        if (key === 'enabled' || key === 'historyScanEnabled' || key === 'deepHistoryScanEnabled' || key === 'onDemandLimit' || key === 'onAccessEnabled') {
             if (configStore.get('enabled')) {
                 requestScannerRestart(key);
             } else {
@@ -406,7 +406,7 @@ async function serviceSetStore(key, value) {
                     currentScanChild.stdin.write(JSON.stringify({ type: 'config-update', scanningSpeed: value }) + '\n');
                 } catch (e) {}
             }
-        } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey'].includes(key)) {
+        } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey', 'threatIntelligenceLevel'].includes(key)) {
             requestScannerRestart(key);
         }
     });
@@ -460,8 +460,8 @@ class SafeIPCParser {
     }
 }
 
-const MAX_PROCESSED_IDS = 100000;
-const MAX_STATS_PER_CAT = 5000;
+const MAX_PROCESSED_IDS = 200000;
+const MAX_STATS_PER_CAT = 50000;
 
 function loadInitialConfig() {
     try {
@@ -1030,7 +1030,8 @@ async function runOutlookScanner() {
     let vtKeyDec = '';
     if (vtKeyEnc) { try { vtKeyDec = safeStorage.decryptString(Buffer.from(vtKeyEnc, 'base64')); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } } }
 
-    const scanMode = configStore.get('historyScanEnabled') ? 'History' : 'OnAccess';
+    const isHistory = !!(configStore.get('historyScanEnabled') || configStore.get('deepHistoryScanEnabled'));
+    const scanMode = isHistory ? 'History' : 'OnAccess';
     logToFile(`Security Engine initialized [Mode: ${scanMode}, Speed: ${configStore.get('scanningSpeed')}%]`);
 
     currentScanChild.stdin.write(JSON.stringify({ 
