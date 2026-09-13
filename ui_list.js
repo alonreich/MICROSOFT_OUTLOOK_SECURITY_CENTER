@@ -240,9 +240,19 @@ function createIncidentRowElement() {
     subjEl.style.whiteSpace = 'nowrap';
 
     const badgeCol = document.createElement('div');
+    badgeCol.style.display = 'flex';
+    badgeCol.style.alignItems = 'center';
+    badgeCol.style.gap = '4px';
+    badgeCol.style.overflow = 'hidden';
+
     const badgeSpan = document.createElement('span');
     badgeSpan.className = 'badge';
     badgeCol.appendChild(badgeSpan);
+
+    const movedBadgeSpan = document.createElement('span');
+    movedBadgeSpan.className = 'badge badge-user-moved';
+    movedBadgeSpan.style.display = 'none';
+    badgeCol.appendChild(movedBadgeSpan);
 
     const scoreEl = document.createElement('div');
     scoreEl.style.fontFamily = 'monospace';
@@ -258,7 +268,7 @@ function createIncidentRowElement() {
     div.appendChild(badgeCol);
     div.appendChild(scoreEl);
 
-    div._cells = { dateEl, timeEl, fromEl, toEl, subjEl, badgeSpan, scoreEl };
+    div._cells = { dateEl, timeEl, fromEl, toEl, subjEl, badgeSpan, movedBadgeSpan, scoreEl };
     return div;
 }
 
@@ -309,6 +319,29 @@ function updateIncidentRowElement(div, item, index) {
     if (cells.badgeSpan.textContent !== verdict) cells.badgeSpan.textContent = verdict;
     const targetBadgeClass = `badge ${verdictClass}`;
     if (cells.badgeSpan.className !== targetBadgeClass) cells.badgeSpan.className = targetBadgeClass;
+
+    if (item.userMoved) {
+        cells.movedBadgeSpan.style.display = 'inline-flex';
+        cells.movedBadgeSpan.innerHTML = `Moved by User <span style="font-weight:900;margin-left:3px;font-size:0.75rem;">?</span>`;
+        const folderName = item.currentFolder || 'another folder';
+        const explStory = item.userMovedStory || `You manually moved this email to folder "${folderName}" inside Outlook. DeskGuard respects your choice and will never automatically move or quarantine it again.`;
+        cells.movedBadgeSpan.title = explStory;
+        cells.movedBadgeSpan.onclick = (e) => {
+            e.stopPropagation();
+            if (window.showConfirmModal) {
+                window.showConfirmModal(
+                    'EMAIL MOVED BY USER IN OUTLOOK',
+                    `This email was originally flagged or quarantined by DeskGuard, but you manually moved it to folder "${folderName}" in Microsoft Outlook.\n\nDeskGuard respects your manual override. It will NEVER automatically move or quarantine this email again.`,
+                    () => {}
+                );
+            } else {
+                alert(explStory);
+            }
+        };
+    } else {
+        cells.movedBadgeSpan.style.display = 'none';
+        cells.movedBadgeSpan.onclick = null;
+    }
 
     const numScore = parseInt(item.score);
     const displayScore = isNaN(numScore) ? '--' : `${numScore}%`;
@@ -446,12 +479,28 @@ window.selectIncident = async (item) => {
         displayTime = 'N/A';
     }
 
+    const userMovedBanner = item.userMoved ? `
+        <div style="background: rgba(235, 0, 41, 0.12); border: 1px solid var(--danger); border-radius: 6px; padding: 10px 14px; margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 1.1rem; color: var(--danger); line-height: 1;">⚠️</span>
+            <div>
+                <div style="font-weight: 700; font-size: 0.82rem; color: var(--danger); text-transform: uppercase;">Manually Relocated by User in Outlook</div>
+                <div style="font-size: 0.78rem; color: var(--text); margin-top: 2px; line-height: 1.4;">
+                    ${window.escapeHtml(item.userMovedStory || `You manually moved this email to folder "${item.currentFolder || 'another folder'}" inside Microsoft Outlook. DeskGuard respects your manual override and will never automatically move or quarantine it again.`)}
+                </div>
+            </div>
+        </div>
+    ` : '';
+
     panel.innerHTML = `
         <div class="detail-header">
             <h2 style="margin: 0; font-size: 1.1rem; font-weight: 500;">${safeSubject}</h2>
-            <div style="margin-top: 8px;"><span class="badge ${verdictClass}">${safeVerdict}</span></div>
+            <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+                <span class="badge ${verdictClass}">${safeVerdict}</span>
+                ${item.userMoved ? `<span class="badge badge-user-moved" title="Relocated by user to ${window.escapeHtml(item.currentFolder || 'another folder')}">Moved by User ?</span>` : ''}
+            </div>
         </div>
         <div class="detail-content">
+            ${userMovedBanner}
             <div class="detail-meta">
                 <label>Sender</label><div style="word-break: break-all;">${safeSender}</div>
                 <label>Recipient</label><div style="word-break: break-all;">${safeRecipient}</div>

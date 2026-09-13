@@ -47,6 +47,8 @@ class VaultDB {
                 tier TEXT,
                 attachments_json TEXT,
                 unread INTEGER DEFAULT 0,
+                user_moved INTEGER DEFAULT 0,
+                current_folder TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -55,6 +57,7 @@ class VaultDB {
             CREATE INDEX IF NOT EXISTS idx_emails_recipient ON emails(recipient);
             CREATE INDEX IF NOT EXISTS idx_emails_verdict ON emails(verdict);
             CREATE INDEX IF NOT EXISTS idx_emails_fingerprint ON emails(fingerprint);
+            CREATE INDEX IF NOT EXISTS idx_emails_user_moved ON emails(user_moved);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
                 subject,
@@ -83,6 +86,10 @@ class VaultDB {
                 VALUES (new.rowid, new.subject, new.body, new.sender, new.recipient, new.attachments_json);
             END;
         `);
+
+        // Migration safety for existing databases
+        try { this.db.exec("ALTER TABLE emails ADD COLUMN user_moved INTEGER DEFAULT 0;"); } catch (e) {}
+        try { this.db.exec("ALTER TABLE emails ADD COLUMN current_folder TEXT;"); } catch (e) {}
 
         this.insertStmt = this.db.prepare(`
             INSERT INTO emails (
@@ -391,11 +398,49 @@ class VaultDB {
         }
     }
 
+    updateUserMoved(id, currentFolder) {
+        if (!this.db || !id) return false;
+        try {
+            this.db.prepare(`
+                UPDATE emails 
+                SET user_moved = 1, current_folder = ? 
+                WHERE id = ? OR entry_id = ? OR fingerprint = ?
+            `).run(currentFolder || 'Outlook Folder', id, id, id);
+            return true;
+        } catch (err) {
+            console.error('[VaultDB] updateUserMoved error:', err.message);
+            return false;
+        }
+    }
+
+    getAllCategorizedEmails(limitPerCat = 2000) {
+        if (!this.db) return { malicious: [], suspicious: [], spam: [], safe: [] };
+        const result = { malicious: [], suspicious: [], spam: [], safe: [] };
+        try {
+            for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
+                const rows = this.db.prepare(`
+                    SELECT * FROM emails 
+                    WHERE LOWER(verdict) LIKE ? 
+                    ORDER BY date DESC, time DESC 
+                    LIMIT ?
+                `).all(`%${cat}%`, limitPerCat);
+                result[cat] = rows.map(r => this.formatRow(r));
+            }
+            return result;
+        } catch (err) {
+            console.error('[VaultDB] getAllCategorizedEmails error:', err.message);
+            return result;
+        }
+    }
+
     formatRow(row) {
         let atts = [];
         try {
             if (row.attachments_json) atts = JSON.parse(row.attachments_json);
         } catch {}
+
+        const userMoved = !!row.user_moved;
+        const currentFolder = row.current_folder || '';
 
         return {
             id: row.id,
@@ -418,7 +463,12 @@ class VaultDB {
             score: row.score,
             tier: row.tier,
             attachments: atts,
-            unread: !!row.unread
+            unread: !!row.unread,
+            userMoved: userMoved,
+            currentFolder: currentFolder,
+            userMovedStory: userMoved 
+                ? `Originally quarantined by DeskGuard, but you manually moved this email to folder '${currentFolder || 'another folder'}' inside Outlook. DeskGuard respects your choice and will not move it again.`
+                : ''
         };
     }
 

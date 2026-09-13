@@ -69,8 +69,9 @@ function switchTab(tabId) {
     
     const oldTab = document.getElementById('tab-' + window.AppState.currentTab);
     const newTab = document.getElementById('tab-' + tabId);
+    if (!newTab) return;
     
-    oldTab.classList.remove('active');
+    if (oldTab) oldTab.classList.remove('active');
     setTimeout(() => {
         window.AppState.currentTab = tabId;
         document.querySelectorAll('.nav-item').forEach(p => p.classList.remove('active'));
@@ -78,6 +79,15 @@ function switchTab(tabId) {
         if (navItem) navItem.classList.add('active');
         
         newTab.classList.add('active');
+
+        if (tabId === 'duplicates') {
+            const dupView = document.getElementById('duplicate-view');
+            if (dupView && (!dupView.children.length || dupView.innerHTML.trim() === '')) {
+                if (typeof window.renderDuplicateInitialView === 'function') {
+                    window.renderDuplicateInitialView();
+                }
+            }
+        }
     }, 50);
 }
 
@@ -175,7 +185,10 @@ async function factoryReset() {
         "DANGER: Factory Reset",
         "This will permanently wipe all security databases, settings, and logs. This action cannot be undone. Are you sure?",
         null,
-        async () => { await api.resetApp(); }
+        async () => {
+            try { localStorage.removeItem('deskguard_first_run_completed'); } catch (e) {}
+            await api.resetApp();
+        }
     );
 }
 
@@ -288,7 +301,9 @@ api.onOutlookStatus(statusData => {
 
 // Window Controls
 window.winMinimize = () => api.minimizeWindow();
+window.winMaximize = () => api.maximizeWindow ? api.maximizeWindow() : null;
 window.winHide = () => api.hideWindow();
+window.winClose = () => api.closeWindow ? api.closeWindow() : api.hideWindow();
 
 async function init() {
     const stats = await api.getStats();
@@ -296,7 +311,12 @@ async function init() {
     try {
         const cfg = await api.getConfig();
         window.AppState.config = cfg;
-        if (cfg && cfg.firstRun !== false) {
+        let localCompleted = false;
+        try {
+            localCompleted = localStorage.getItem('deskguard_first_run_completed') === 'true';
+        } catch (e) {}
+
+        if (!localCompleted && cfg && cfg.firstRun === true) {
             setTimeout(() => {
                 openModal('first-run-wizard-modal');
             }, 300);
@@ -306,6 +326,7 @@ async function init() {
 
 window.useRecommendedSettings = async function() {
     try {
+        try { localStorage.setItem('deskguard_first_run_completed', 'true'); } catch (e) {}
         const recommendedRubrics = {
             weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 },
             toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true },
@@ -319,12 +340,14 @@ window.useRecommendedSettings = async function() {
         addLog('First-time setup completed: Recommended security policy applied.');
     } catch (err) {
         console.error('Wizard error:', err);
+        try { localStorage.setItem('deskguard_first_run_completed', 'true'); } catch (e) {}
         closeModal('first-run-wizard-modal');
     }
 };
 
 window.customizeWizardSettings = async function() {
     try {
+        try { localStorage.setItem('deskguard_first_run_completed', 'true'); } catch (e) {}
         await api.setFirstRun(false);
         closeModal('first-run-wizard-modal');
         setTimeout(() => {
@@ -335,6 +358,7 @@ window.customizeWizardSettings = async function() {
             }
         }, 350);
     } catch (err) {
+        try { localStorage.setItem('deskguard_first_run_completed', 'true'); } catch (e) {}
         closeModal('first-run-wizard-modal');
     }
 };
@@ -383,8 +407,15 @@ window.openForensics = (item) => {
     if (window.renderForensics) window.renderForensics(item);
 };
 
-// Global Keyboard Navigation for Virtualized Lists
+// Global Keyboard Navigation for Virtualized Lists and Modal Dismissal
 document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const activeModal = document.querySelector('.modal-overlay.active');
+        if (activeModal) {
+            closeModal(activeModal.id);
+            return;
+        }
+    }
     if (window.AppState.currentTab === 'dashboard' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
         if (document.querySelector('.modal-overlay.active')) return;

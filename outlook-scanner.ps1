@@ -24,6 +24,8 @@ if ($null -eq $Global:DupHashes) { $Global:DupHashes = @{} }
 if ($null -eq $Global:DupResults) { $Global:DupResults = New-Object System.Collections.Generic.List[object] }
 if ($null -eq $Global:DupScannedCount) { $Global:DupScannedCount = 0 }
 if ($null -eq $Global:EventSubscriberIds) { $Global:EventSubscriberIds = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList)) }
+if ($null -eq $Global:ReleasedFingerprints) { $Global:ReleasedFingerprints = New-Object System.Collections.Generic.HashSet[string] }
+if ($null -eq $Global:UserMovedFingerprints) { $Global:UserMovedFingerprints = New-Object System.Collections.Generic.HashSet[string] }
 
 # --- ENTERPRISE UTILITIES ---
 
@@ -416,22 +418,18 @@ function Get-TargetFolder-Safe {
 
 function Get-Outlook {
     $attempts = 0
-    while ($attempts -lt 3) {
+    while ($attempts -lt 5) {
         try { 
             $obj = [Runtime.InteropServices.Marshal]::GetActiveObject("Outlook.Application") 
             if ($obj) { return $obj }
-        } catch { 
-            try { 
-                $obj = New-Object -ComObject Outlook.Application 
-                if ($obj) { return $obj }
-            } catch { 
-                [Console]::Error.WriteLine("Outlook Connection Attempt $($attempts + 1) failed: $($_.Exception.Message)")
-            } 
-        }
+        } catch {}
+        try { 
+            $obj = New-Object -ComObject Outlook.Application 
+            if ($obj) { return $obj }
+        } catch {}
         $attempts++
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
     }
-    [Console]::Error.WriteLine("CRITICAL: All 3 attempts to connect to Outlook failed.")
     return $null
 }
 
@@ -460,9 +458,13 @@ function Init-Exclusions {
 function Parse-Forensics {
     param($item)
     if (!$item) {
-        return @{ ip="N/A"; headers=""; from="Unknown"; body=""; attachments=@() }
+        return @{ ip="N/A"; headers=""; from="Unknown"; body=""; attachments=@(); unread=0 }
     }
     
+    # Strictly preserve initial Read/Unread state
+    $origUnread = $null
+    try { $origUnread = Invoke-OutlookMethod { $item.UnRead } } catch {}
+
     # 1. Transport Headers (PR_TRANSPORT_MESSAGE_HEADERS: 0x007D001E / 0x007D001F)
     $headers = Get-Property-Safe $item "0x007D001E" ""
     if ([string]::IsNullOrWhiteSpace($headers)) {
@@ -630,6 +632,17 @@ function Parse-Forensics {
         Release-Com $AttsObj
     }
     
+    if ($null -ne $origUnread) {
+        try {
+            Invoke-OutlookMethod {
+                if ($item.UnRead -ne $origUnread) {
+                    $item.UnRead = $origUnread
+                    $item.Save()
+                }
+            }
+        } catch {}
+    }
+
     return @{ 
         ip = $senderIp; 
         headers = $headers; 
@@ -645,20 +658,28 @@ function Parse-Forensics {
         Su = $subj;
         Se = $from;
         Hs = $headers;
-        by = $body
+        by = $body;
+        unread = if ($origUnread -eq $true) { 1 } else { 0 }
     }
 }
 
 function Robust-Move {
     param($item, $targetFolder)
     if (!$item -or !$targetFolder) { return $null }
+    $origUnread = $null
+    try { $origUnread = Invoke-OutlookMethod { $item.UnRead } } catch {}
     try {
-        $origUnread = $item.UnRead
         $m = Invoke-OutlookMethod { $item.Move($targetFolder) }
         if ($null -ne $m) { 
-            Invoke-OutlookMethod {
-                $m.UnRead = $origUnread
-                $m.Save()
+            if ($null -ne $origUnread) {
+                try {
+                    Invoke-OutlookMethod {
+                        if ($m.UnRead -ne $origUnread) {
+                            $m.UnRead = $origUnread
+                            $m.Save()
+                        }
+                    }
+                } catch {}
             }
             return $m 
         }
@@ -1208,6 +1229,7 @@ if ($Mode -eq "Worker") {
             elseif ($Action -eq "Check-Existence") {
                 $itemsList = if ($Ex.items) { $Ex.items } elseif ($Ex.data -and $Ex.data.items) { $Ex.data.items } else { @() }
                 $removedList = New-Object System.Collections.Generic.List[object]
+                $userMovedList = New-Object System.Collections.Generic.List[object]
                 foreach ($entry in $itemsList) {
                     $id = if ($entry.entryId) { $entry.entryId } else { $entry }
                     if ([string]::IsNullOrEmpty($id)) { continue }
@@ -1215,7 +1237,25 @@ if ($Mode -eq "Worker") {
                     $exists = $false
                     try {
                         $item = Invoke-OutlookMethod { $N.GetItemFromID($id) }
-                        if ($null -ne $item) { $exists = $true }
+                        if ($null -ne $item) { 
+                            $exists = $true
+                            $parentFolder = try { $item.Parent.Name } catch { "Unknown" }
+                            $parentPath = try { $item.Parent.FolderPath } catch { "" }
+                            $vLower = if ($entry.verdict) { $entry.verdict.ToString().ToLower() } else { "" }
+                            $wasFlagged = ($vLower -match "malicious|spam|suspicious" -or $entry.action -eq "Quarantined")
+                            $isInQuarantine = ($parentFolder -match "Junk|Deleted|Trash|Quarantine")
+                            if ($wasFlagged -and !$isInQuarantine) {
+                                [void]$userMovedList.Add(@{
+                                    entryId = $id
+                                    userMoved = $true
+                                    currentFolder = $parentFolder
+                                    currentFolderPath = $parentPath
+                                })
+                                if ($entry.fingerprint) {
+                                    [void]$Global:UserMovedFingerprints.Add($entry.fingerprint)
+                                }
+                            }
+                        }
                     } catch {
                         $exists = $false
                     } finally {
@@ -1226,7 +1266,14 @@ if ($Mode -eq "Worker") {
                     }
                 }
                 if ($Ex.rid) {
-                    Send-Structured-Message @{ type="cmd-response"; rid=$Ex.rid; success=$true; removed=$removedList; data=@{ removed=$removedList } }
+                    Send-Structured-Message @{ 
+                        type = "cmd-response"
+                        rid = $Ex.rid
+                        success = $true
+                        removed = $removedList
+                        userMoved = $userMovedList
+                        data = @{ removed=$removedList; userMoved=$userMovedList } 
+                    }
                 }
             }
             elseif ($Action -eq "CloudVirusScan") {
@@ -1451,8 +1498,12 @@ function Process-Batch {
                             $t = Invoke-OutlookMethod { $N.GetItemFromID($itemData.Id) }
                         }
                         if ($Global:ReleasedFingerprints.Contains($itemData.Finger)) { $R.mv = "CLEAN"; $R.verdict = "Safe" }
+                        $isUserMoved = $Global:UserMovedFingerprints.Contains($itemData.Finger)
+                        if ($isUserMoved) { $R.action = "User-Preserved" }
                         
-                        if ($R.mv -eq "MALICIOUS" -and $t) {
+                        $expectedUnread = if ($itemData.ContainsKey("Unread") -and $null -ne $itemData.Unread) { [bool]$itemData.Unread } else { (try { Invoke-OutlookMethod { $t.UnRead } } catch { $false }) }
+
+                        if ($R.mv -eq "MALICIOUS" -and $t -and !$isUserMoved) {
                             $def3 = $null
                             try {
                                 $def3 = Get-TargetFolder-Safe $t 3
@@ -1460,13 +1511,13 @@ function Process-Batch {
                                     $m = Robust-Move $t $def3
                                     if ($m) { 
                                         [void]$ps.Add($itemData.Finger)
-                                        $unreadVal = try { $m.UnRead } catch { $false }
+                                        $unreadVal = try { Invoke-OutlookMethod { $m.UnRead } } catch { $expectedUnread }
                                         Send-Status -status "THREAT BLOCKED" -details $itemData.Su -subject $itemData.Su -verdict $R.verdict -action $R.action -entryId $m.EntryID -originalEntryId $itemData.Id -sender $itemData.Se -ip $itemData.IP -score $R.score -tier $R.tier -unread $unreadVal -fingerprint $itemData.Finger -fullHeaders $itemData.Hs -body $itemData.by -to $itemData.To -cc $itemData.Cc -date $itemData.Date -time $itemData.Time -timestamp $itemData.Timestamp -storeId $itemData.StoreId
                                         Release-Com $m 
                                     } 
                                 }
                             } finally { Release-Com $def3 }
-                        } elseif ($R.mv -eq "SPAM" -and $t) {
+                        } elseif ($R.mv -eq "SPAM" -and $t -and !$isUserMoved) {
                             $def23 = $null
                             try {
                                 $def23 = Get-TargetFolder-Safe $t 23
@@ -1474,7 +1525,7 @@ function Process-Batch {
                                     $m = Robust-Move $t $def23
                                     if ($m) { 
                                         [void]$ps.Add($itemData.Finger)
-                                        $unreadVal = try { $m.UnRead } catch { $false }
+                                        $unreadVal = try { Invoke-OutlookMethod { $m.UnRead } } catch { $expectedUnread }
                                         Send-Status -status "SPAM FILTERED" -details $itemData.Su -subject $itemData.Su -verdict $R.verdict -action $R.action -entryId $m.EntryID -originalEntryId $itemData.Id -sender $itemData.Se -ip $itemData.IP -score $R.score -tier $R.tier -unread $unreadVal -fingerprint $itemData.Finger -fullHeaders $itemData.Hs -body $itemData.by -to $itemData.To -cc $itemData.Cc -date $itemData.Date -time $itemData.Time -timestamp $itemData.Timestamp -storeId $itemData.StoreId
                                         Release-Com $m 
                                     } 
@@ -1482,8 +1533,19 @@ function Process-Batch {
                             } finally { Release-Com $def23 }
                         } else { 
                             [void]$ps.Add($itemData.Finger)
-                            $unreadVal = if ($t) { try { $t.UnRead } catch { $false } } else { $false }
-                            Send-Status -status "Finished" -details $itemData.Su -subject $itemData.Su -verdict "Safe" -entryId $itemData.Id -originalEntryId $itemData.Id -sender $itemData.Se -ip $itemData.IP -score $R.score -tier $R.tier -unread $unreadVal -fingerprint $itemData.Finger -fullHeaders $itemData.Hs -body $itemData.by -to $itemData.To -cc $itemData.Cc -date $itemData.Date -time $itemData.Time -timestamp $itemData.Timestamp -storeId $itemData.StoreId
+                            if ($t -and $null -ne $expectedUnread) {
+                                try {
+                                    Invoke-OutlookMethod {
+                                        if ($t.UnRead -ne $expectedUnread) {
+                                            $t.UnRead = $expectedUnread
+                                            $t.Save()
+                                        }
+                                    }
+                                } catch {}
+                            }
+                            $unreadVal = if ($t) { try { Invoke-OutlookMethod { $t.UnRead } } catch { $expectedUnread } } else { $expectedUnread }
+                            $currFolderName = if ($t -and $t.Parent) { try { $t.Parent.Name } catch { "" } } else { "" }
+                            Send-Status -status "Finished" -details $itemData.Su -subject $itemData.Su -verdict $R.verdict -entryId $itemData.Id -originalEntryId $itemData.Id -sender $itemData.Se -ip $itemData.IP -score $R.score -tier $R.tier -unread $unreadVal -fingerprint $itemData.Finger -fullHeaders $itemData.Hs -body $itemData.by -to $itemData.To -cc $itemData.Cc -date $itemData.Date -time $itemData.Time -timestamp $itemData.Timestamp -storeId $itemData.StoreId -userMoved $isUserMoved -currentFolder $currFolderName
                         }
                     } catch {} finally { Release-Com $t }
                 }
@@ -1731,16 +1793,20 @@ function Register-OnAccess-Watchers {
                 $items = $inbox.Items
                 $subId = "MOS_Inbox_ItemAdd_$($S.StoreID)"
                 Unregister-Event -SourceIdentifier $subId -ErrorAction SilentlyContinue
-                [void](Register-ObjectEvent -InputObject $items -EventName "ItemAdd" -SourceIdentifier $subId -Action {
-                    param($item)
-                    try {
-                        if ($item -and $item.MessageClass -eq "IPM.Note") {
-                            $Global:ScanQueue.Enqueue($item.EntryID)
+                try {
+                    [void](Register-ObjectEvent -InputObject $items -EventName "ItemAdd" -SourceIdentifier $subId -ErrorAction Stop -Action {
+                        param($item)
+                        try {
+                            if ($item -and $item.MessageClass -eq "IPM.Note") {
+                                $Global:ScanQueue.Enqueue($item.EntryID)
+                            }
+                        } finally {
+                            Release-Com $item
                         }
-                    } finally {
-                        Release-Com $item
-                    }
-                })
+                    })
+                } catch {
+                    # Dynamic COM proxy fallback to sweep loop
+                }
                 [void]$Global:EventSubscriberIds.Add($subId)
                 [void]$Global:Watchers.Add(@{ Folder=$inbox; Items=$items })
             } else {
@@ -1951,7 +2017,7 @@ try {
                                             Id=$qId; Su=(Get-ItemSubject $qt); Se=$qfData.from; IP=$qfData.ip; Do=$qdomain; 
                                             Hs=$qfData.headers; by=$qfData.body; Finger=$qfp; Attachments=$qfData.attachments;
                                             To=$qfData.to; Cc=$qfData.cc; Date=$qfData.date; Time=$qfData.time; Timestamp=$qfData.timestamp;
-                                            StoreId=$qStoreId
+                                            StoreId=$qStoreId; Unread=($qfData.unread -eq 1)
                                         }
                                         $qpsi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($qitemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Til)
                                         $qpsi.RunspacePool = $RunspacePool
@@ -1976,7 +2042,7 @@ try {
                                     Id=$entryId; Su=(Get-ItemSubject $t); Se=$fData.from; IP=$fData.ip; Do=$domain; 
                                     Hs=$fData.headers; by=$fData.body; Finger=$fp; Attachments=$fData.attachments;
                                     To=$fData.to; Cc=$fData.cc; Date=$fData.date; Time=$fData.time; Timestamp=$fData.timestamp;
-                                    StoreId=$fDesc.StoreId
+                                    StoreId=$fDesc.StoreId; Unread=($fData.unread -eq 1)
                                 }
                                 $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Til)
                                 $psi.RunspacePool = $RunspacePool
@@ -2030,8 +2096,13 @@ try {
 
     $StdInReader = [System.IO.StreamReader]::new([Console]::OpenStandardInput())
     $ReadTask = $StdInReader.ReadLineAsync()
+    $lastPeriodicSweep = [DateTime]::Now
 
     while ($true) {
+        if ($Ex.onAccessEnabled -ne $false -and ([DateTime]::Now - $lastPeriodicSweep).TotalSeconds -ge 8) {
+            $lastPeriodicSweep = [DateTime]::Now
+            Sweep-Unread-Items $N
+        }
         Send-Heartbeat
         
         if ($ReadTask.IsCompleted) {
@@ -2069,7 +2140,7 @@ try {
                         Id=$id; Su=(Get-ItemSubject $lt); Se=$fData.from; IP=$fData.ip; Do=$domain; 
                         Hs=$fData.headers; by=$fData.body; Finger=$fp; Attachments=$fData.attachments;
                         To=$fData.to; Cc=$fData.cc; Date=$fData.date; Time=$fData.time; Timestamp=$fData.timestamp;
-                        StoreId=$qStoreId
+                        StoreId=$qStoreId; Unread=($fData.unread -eq 1)
                     }
                     $psi = [powershell]::Create().AddScript($AnalysisScript).AddArgument($itemData).AddArgument($sk).AddArgument($ru).AddArgument($wl).AddArgument($bl).AddArgument($Vk).AddArgument($Til)
                     $psi.RunspacePool = $RunspacePool

@@ -1,25 +1,25 @@
 # SOURCE OF TRUTH: DESKGUARD FOR MICROSOFT OUTLOOK
-# VERSION: 2.5.0 (Single-Writer Architecture & STA COM Synchronized)
+# VERSION: 2.7.0 (Modal Viewport Containment, Dual Save & Window Controls)
 # TARGET: AI AGENT / SENIOR DEVELOPER HANDOFF
 # WORKSPACE: C:\Full_Control\Microsoft_Outlook_Security\
 # PRIMARY LAUNCHER: .\DeskGuard_for_Microsoft_Outlook.bat
 
 ## 1. PROJECT MISSION
-To provide a client-side, non-blocking security and forensic sidecar for desktop Microsoft Outlook on Windows. DeskGuard executes real-time heuristic scoring, multi-tier threat intelligence verification, forensic header auditing, and redundant duplicate data cleanup natively through the Outlook MAPI COM interface without server-side dependencies or UI blocking.
+To provide an ultra-reliable, client-side, non-blocking security and forensic sidecar for desktop Microsoft Outlook on Windows. DeskGuard executes real-time heuristic scoring, multi-tier threat intelligence verification, forensic header auditing, and redundant duplicate data cleanup natively through the Outlook MAPI COM interface without server-side dependencies, UI blocking, or data destruction.
 
 ## 2. CORE ARCHITECTURE
 
 ### A. Single-Writer Multi-Process Model
 - **Background Service Process (`--service`):**
-  - Sole authorized writer to application storage (`electron-store` on `config.json` and `data.json`).
+  - Sole authorized writer to application storage (`electron-store` on `config.json`, `data.json`, and SQLite `deskguard_vault.db`).
   - Implements atomic pre-write backups (`.bak`) to prevent JSON corruption or file tearing.
   - Hosts a local Windows Named Pipe server (`\\.\pipe\mos_service_<hash>`) protected with per-session token authentication (`MOS_AUTH_<hash>`).
   - Spawns, monitors, and orchestrates the underlying PowerShell engine processes (`currentScanChild` for live/history scans and `psWorker` for auxiliary commands).
 - **Client GUI Process:**
   - Operates as a stateless client to the background service.
   - Interacts via the authenticated Named Pipe IPC stream with correlated request-response IDs (`rid`).
-  - Maintains in-memory read-only caches (`configCache`, `statsCache`) ensuring instant, zero-latency UI rendering.
-  - Never instantiates `electron-store` directly.
+  - Synchronously hydrates in-memory caches (`configCache`, `statsCache`, `processedIdsCache`, `releasedFingerprintsCache`) on startup via `loadInitialData()`, backed by SQLite `getAllCategorizedEmails()` fallback to guarantee zero state loss across restarts.
+  - Maintains zero-latency UI rendering without direct `electron-store` instantiation in the client.
 
 ### B. Outlook STA COM Synchronization & Zero-Leak Lifecycle
 - **Windows Named Mutex Synchronization (`Global\MOS_Outlook_COM_Lock`):**
@@ -31,125 +31,117 @@ To provide a client-side, non-blocking security and forensic sidecar for desktop
 - **Strict Zero-Leak COM Hierarchy Traversal:**
   - `Get-TargetFolder-Safe` safely accesses parent stores (`$item.Parent.Store.GetDefaultFolder()`) and deterministically frees intermediate `$parent` and `$store` RCWs in `finally` blocks via `[Runtime.InteropServices.Marshal]::FinalReleaseComObject()`.
   - All attachment collections (`Attachments`), property accessors (`PropertyAccessor`), sender entries (`AddressEntry`), and mail items are explicitly released.
-- **Connection Point Sink Retention:**
-  - On-Access live listeners anchor references to both the `$inbox` folder and `$items` collection in `$Global:Watchers` to prevent garbage collection of the underlying COM event sink.
-- **Descriptor-Based Traversal:**
-  - Duplicate email discovery (`$Global:DupStack`) and mailbox crawl (`$stack`) store lightweight string descriptors (`FolderId`, `StoreId`, `FolderName`, `DefaultItemType`) rather than holding open COM folder references. Folders are hydrated on-demand and immediately released.
+- **Read/Unread State Survival Mandate:**
+  - The read/unread status of every mail item is strictly preserved across all scan passes, folder moves, and heuristic evaluations.
+  - `Parse-Forensics` captures initial `$item.UnRead` under STA named mutex lock (`Invoke-OutlookMethod`), restores it before returning if reading headers/body altered it, and emits the `unread` boolean.
+  - `Robust-Move` captures `$origUnread` prior to `$item.Move()`, and explicitly re-applies `$m.UnRead = $origUnread` prior to calling `$m.Save()`.
+  - `Process-Batch` tracks the expected unread state across clean items, moved items, and user-preserved items, enforcing that `$t.UnRead` matches its pre-scan state with automatic verification and restoration.
+  - Telemetry and SQLite schema (`unread INTEGER DEFAULT 0`) record and preserve read/unread flags persistently across restarts.
+- **User-Relocated Email Non-Interference Protocol:**
+  - When an email previously quarantined or flagged by DeskGuard is manually moved by the user in Outlook to another folder, DeskGuard detects its new parent folder via MAPI probing in `Check-Existence`.
+  - Probed items are tracked in `$Global:UserMovedFingerprints`.
+  - During future sweeps, DeskGuard treats user-relocated items as `action = "User-Preserved"`, skipping move operations to prevent endless quarantine/move loops.
+  - The UI displays a prominent red `Moved by User ?` badge with an oversimplified human explanation and a detail banner.
 - **Bounded Process Lifecycle & Passive Standby Watcher (`main.js`):**
   - `ensureOutlookRunning()` enforces strict pre-spawn readiness verification via `tasklist`. If Outlook is closed, the scanner process is never spawned, immediately transitioning to passive standby.
   - Bounded exponential retry policy with circuit breaker limits consecutive engine spawn failures to 3 (`MAX_ENGINE_FAILURES`) with exponential backoff delays (4s, 8s, 16s).
   - Tripping the circuit breaker halts process respawns, broadcasts `engine-fault` and `standby: true`, and hands off to the standby watcher.
-  - Low-frequency passive watcher polls `tasklist` once every 15 seconds (`15000ms`) with ~0.0% CPU usage and zero child processes. Automatically re-launches scanner and resets failure counter upon detecting `outlook.exe`.
+  - Low-frequency passive watcher polls `tasklist` once every 15 seconds (`15000ms`) with ~0.0% CPU usage. Automatically re-launches scanner and resets failure counter upon detecting `outlook.exe`.
   - 30-second watchdog timeouts route through `requestScannerRestart('watchdog-timeout')`, subject to the unified circuit breaker.
-  - Clean timer disarmament guarantees all restart, watchdog, and standby timers are cleared on exit, reset, or shutdown.
 
-### C. Thread-Synchronized Stdout Packet Dispatch & Framing Parser
-- **Process-Wide Monitor Lock (`$Global:StdoutLock`):**
-  - All PowerShell writes to standard output across `psWorker`, `currentScanChild`, and concurrent `$RunspacePool` worker threads are serialized using `[System.Threading.Monitor]::Enter($Global:StdoutLock)` in strict `try/finally` blocks.
-  - Thread synchronization root and `Send-Structured-Message` / `Log-Progress` definitions are injected directly into child runspaces via `InitialSessionState`.
-- **Atomic Contiguous Binary Frame Dispatch:**
-  - Length header (4 bytes LE) and UTF-8 JSON payload are copied into a single contiguous byte array before passing to `[Console]::OpenStandardOutput().Write()` and `Flush()`, preventing interleaved frame chunks and packet tearing under high concurrency.
-- **Resilient Node.js SafeIPCParser Framing Guard:**
-  - Node.js `SafeIPCParser` validates length headers (`0 < nextLen <= 10485760`).
-  - Corrupt or malformed frames trigger immediate desync logging and buffer purge, resetting state to prevent stream desynchronization and memory bloat.
+### C. Persistent SQLite Storage Architecture (`vault_db.js`)
+- **WAL Mode & High Concurrency:**
+  - High-performance SQLite database (`deskguard_vault.db`) running with Write-Ahead Logging (`PRAGMA journal_mode = WAL;`) and `synchronous = NORMAL`.
+  - Fast structured queries across millions of emails without JSON serialization limits.
+- **Schema & Indexes:**
+  - Columns: `id`, `entry_id`, `original_entry_id`, `fingerprint`, `store_id`, `subject`, `sender`, `recipient`, `date`, `time`, `timestamp`, `ip`, `score`, `verdict`, `category`, `tier`, `unread`, `user_moved`, `current_folder`, `created_at`.
+  - Dedicated B-Tree indexes on `category`, `score`, `created_at`, `fingerprint`, and `user_moved`.
+- **Relocation & Recovery API:**
+  - `vaultDB.updateUserMoved(entryId, currentFolder)`: Persists user-relocated mail positions.
+  - `vaultDB.getAllCategorizedEmails(limitPerCat)`: Provides startup restoration fallback for `statsCache`.
 
-### D. Virtualized DOM Rendering & Strict Anti-XSS Sanitization
+### D. Virtualized DOM Rendering & Anti-XSS Protection
 - **Viewport Virtualization & State Diffing (`ui_list.js`, `ui_duplicates.js`):**
   - Caps active DOM nodes to a fixed viewport window (maximum 50 visible rows) even with categories holding up to 5,000 incident records.
-  - Eliminates full DOM wipes, layout thrashing, and event-loop blocking, maintaining 60 FPS rendering and smooth scroll physics.
-  - Diff-based reconciliation updates only altered cell contents and status badges without rebuilding DOM trees.
-- **Strict Anti-XSS Sanitization & DOM Boundary Protection:**
-  - Neutralizes adversarial XSS and script injection embedded in malicious email headers, sender origins, and subjects.
+  - Diff-based reconciliation updates only altered cell contents, badges, and scores without rebuilding DOM trees.
+- **Strict Anti-XSS Sanitization:**
   - Centralized entity encoding (`window.escapeHtml`) sanitizes all interpolated metadata strings.
-  - Plain-text message bodies and header blocks are populated strictly via `element.textContent`, preventing HTML parsing and arbitrary DOM execution.
+  - Plain-text message bodies and header blocks are populated strictly via `element.textContent`, preventing HTML parsing and arbitrary script execution.
 
-### E. Integrated Action Dispatch & Remediation Layer
-- **Unified IPC Command Routing (`main.js` & `outlook-scanner.ps1`):**
-  - `Quarantine`: Relocates suspect items to **Junk Email** (`olFolderJunk` = 23) or **Deleted Items** (`olFolderDeletedItems` = 3) via `Robust-Move`.
-  - `Release`: Restores false positives to the **Inbox** (`olFolderInbox` = 6) and registers item fingerprints in `releasedFingerprints` to eliminate re-quarantine loops.
-  - `Delete`: Permanently purges targeted emails (`$item.Delete()`) with deterministic RCW cleanup.
-  - `Check-Existence`: Non-blocking item verification via MAPI `GetItemFromID` without throwing COM errors or holding locks.
-  - `DuplicateScan` & `ResetDuplicateStack`: Drives background mailbox redundancy scanning and manages traversal state.
-  - `CloudVirusScan`: Deep threat intelligence inspection using DPAPI-decrypted VirusTotal API credentials.
+### E. Unified IPC Command & Action Routing
+- `Quarantine`: Relocates suspect items to **Junk Email** (`olFolderJunk` = 23) or **Deleted Items** (`olFolderDeletedItems` = 3) via `Robust-Move`.
+- `Release`: Restores false positives to the **Inbox** (`olFolderInbox` = 6) and registers item fingerprints in `releasedFingerprints` to eliminate re-quarantine loops.
+- `Delete`: Permanently purges targeted emails (`$item.Delete()`) with deterministic RCW cleanup.
+- `Check-Existence`: Non-blocking item verification via MAPI `GetItemFromID` without throwing COM errors; probes current parent folder to detect user-relocated items.
+- `DuplicateScan` & `ResetDuplicateStack`: Drives background mailbox redundancy scanning and manages traversal state.
+- `CloudVirusScan`: Deep threat intelligence inspection using DPAPI-decrypted VirusTotal API credentials.
+- `app-reset`: Supports both `safe` (re-indexes database, flushes cache, preserves settings and API keys) and `scorched` (wipes all DBs, settings, keys, logs, forensics, and Windows startup run keys).
 
-## 3. DATA PERSISTENCE & IN-MEMORY WRITE-BACK BUFFER
-- `config.json`: User security preferences, DPAPI-encrypted API keys (`vtApiKey`), keyword rubrics, whitelist/blacklist, and Windows startup settings.
-- `data.json`: Incident statistics (`malicious`, `suspicious`, `spam`, `safe`), processed ID hash rings (`processedIdsCache`), and released fingerprints.
-- **In-Memory Write-Back Buffer (`processedIdsCache`):**
-  - High-throughput telemetry ingestion path uses an in-memory `Set<string>` capped strictly at 100,000 entries.
-  - O(1) deduplication check (`has`) and insertion (`add`) execute in < 0.001ms per packet with zero synchronous disk writes on the hot path.
-  - Bounded capacity maintained via O(1) eviction of oldest entries when cache exceeds `MAX_PROCESSED_IDS`.
-- **Unified Debounced Asynchronous Flush Coordinator (`flushStatePersistence`):**
-  - Coordinates incident stats and processed IDs in a single asynchronous pass.
-  - Triggers at most once every 5,000ms or when uncommitted items exceed 500.
-  - Serializes to `data.json.tmp` and executes atomic swap via `fsPromises.rename()` with `.bak` snapshot rotation.
-  - Event loop remains completely unblocked, preserving steady 5-second watchdog timer cadence without engine kill cascades.
-  - Synchronous flush fallback (`flushStatePersistenceSync`) guarantees zero data loss on application exit or service shutdown.
-- **Canonical Forensic Snapshot Persistence & Asynchronous Retrieval (`main.js`):**
-  - Forensic snapshots (`fullHeaders`, `body`) are decoded once upon telemetry arrival and persisted to `logs/forensics/<hash>.json` as canonical plain UTF-8 strings.
-  - Asynchronous IPC retrieval via `fsPromises.readFile` in `ipcMain.handle('get-forensics')` guarantees non-blocking execution with sub-millisecond response latency (< 1ms).
-  - Self-healing backward compatibility layer detects and decodes legacy base64-encoded snapshots on-the-fly, eliminating byte scrambling or character truncation.
-  - Structured error containment gracefully handles missing or malformed files, returning structured fallbacks without raising unhandled IPC exceptions.
+## 3. THREAT INTELLIGENCE ENGINE & EXPLANATION
+- **Level 0 (Local PC Only - Maximum Privacy):**
+  - All security checks execute 100% locally on the host machine.
+  - Evaluates SPF, DKIM, DMARC, MIME structure, and heuristic rubrics.
+  - Zero external internet queries; no hashes or headers ever leave the machine.
+- **Level 1 (Smart Community Defense - Recommended):**
+  - Local-first inspection. Only suspicious or low-confidence emails (Score < 65%) trigger cloud queries.
+  - Queries Team Cymru Zero-Config DNS Hash DB and VirusTotal (if API key is connected).
+  - Safe emails from known senders never leave the machine.
+- **Level 2 (Maximum Cloud Inspection - Aggressive):**
+  - Every incoming email, attachment hash, and URL is verified against 70+ cloud antivirus engines.
+  - Uncompromising defense for high-risk accounts and sensitive environments.
 
-## 4. SECURITY PIPELINE & THREAT INTELLIGENCE
-DeskGuard executes a 5-stage analysis pipeline:
-1. **Stage 1: Reputation Verification:** Instant match against local Whitelists and Blacklists (IP, domain, sender email, and combined IP+Domain tuples).
-2. **Stage 2: Transport Security & RFC Compliance:** Analyzes `PR_TRANSPORT_MESSAGE_HEADERS` for SPF results, DMARC alignment, and routing integrity.
-3. **Stage 3: MIME & Header Forensics:** Evaluates MIME structure, executable attachment signatures, and upstream spam score flags (`X-Spam-Flag`).
-4. **Stage 4: Heuristic Engine:** Multi-threaded keyword pattern matching in RunspacePool with configurable weighted penalties.
-5. **Stage 5: Threat Intelligence Levels:**
-   - **Level 0 (Off):** Local heuristics only.
-   - **Level 1 (Smart - Default):** Automatically generates SHA-256 hashes of body and attachments for suspicious items (Score < 65%) and audits against threat databases.
-   - **Level 2 (Max):** Mandatory cryptographic hashing and cloud intelligence verification for all incoming items.
+## 4. UI SETTINGS & CONFIGURATION
+- **Modal Viewport Containment & Scrolling:**
+  - Settings modal is constrained to the active viewport (`max-height: calc(100vh - 70px); height: 88vh;`) with flex column layout.
+  - Pinned modal header and sticky footer (`flex-shrink: 0;`) ensure navigation, close, and save actions are always in view.
+  - Modal body scrolls vertically (`flex: 1 1 auto; overflow-y: auto; min-height: 0;`) across all display resolutions.
+- **High-Contrast Boundaries & Elevation:**
+  - Crisp boundary styling (`border: 1px solid rgba(0, 120, 212, 0.5);`) and elevation box-shadow (`0 28px 70px rgba(0, 0, 0, 0.9);`).
+- **Dual-Action Save Controls & Unsaved Indicator:**
+  - Dual Save Changes buttons located in both the header (`#save-settings-btn-top`) and the footer (`#save-settings-btn`).
+  - Real-time `● Unsaved Changes` badge (`#settings-unsaved-indicator`) dynamically alerts users of pending changes across toggles and inputs.
+- **Title Bar Controls & Global Modal Dismissal:**
+  - Title bar elevated at `z-index: 7000` with Minimize, Maximize/Restore, and Close buttons above modal overlays (`top: 32px; z-index: 5000;`).
+  - Prominent modal close button (`.modal-close-btn`) and global Escape key listener for immediate dismissal.
+- **Centered Group Titles:**
+  - All settings section headers are center-aligned (`text-align: center; text-transform: uppercase; letter-spacing: 0.8px; color: var(--accent);`), while inner configuration controls remain cleanly left-aligned.
+- **Emails Scan Speed (formerly Mailbox Crawl Pace):**
+  - Slider with presets: Gentle (Low CPU), Balanced, High Throughput.
+- **Interactive Threat Intelligence Explainer:**
+  - Live dynamic card detailing the selected level's capabilities and privacy guarantees.
+- **Maintenance & Upgrades:**
+  - Safe Upgrade / Cache Refresh (keeps settings and keys).
+  - Scorched Earth Hard Reset (complete factory wipe).
 
-## 5. VERDICT ROUTING & MAPI DESTINATIONS
-- **MALICIOUS (Score ≤ 20%):** Automatically relocated to **Deleted Items** (`olFolderDeletedItems` = 3) via `Robust-Move`.
-- **SPAM (Score ≤ Spam Threshold):** Automatically relocated to **Junk Email** (`olFolderJunk` = 23) via `Robust-Move`.
-- **SAFE (Score > Spam Threshold):** Retained in **Inbox** (`olFolderInbox` = 6).
-
-## 6. DUPLICATE EMAIL DISCOVERY & PRE-FLIGHT SURVIVOR VALIDATION
-- **Non-blocking Asynchronous Traversal:** Discovers redundant items in `psWorker` using lightweight MAPI descriptors (`FolderId`, `StoreId`, `EntryID`) rather than holding open COM folder references.
-- **Multi-Factor DNA Signature:** Computes `Sender | Normalized Subject | ISO Timestamp | Body Sample Fingerprint` to identify true duplicate clusters across all folders and PST/OST stores.
-- **Survivor Metadata Coupling:** Automatically catalogued duplicate records store candidate metadata alongside definitive survivor identifiers (`entryId`, `survivorId`, `survivorFolder`, `survivorStore`, `dna`).
-- **Pre-Flight Survivor Validation Protocol:**
-  - Before moving or deleting any duplicate, verifies survivor existence in Outlook via `GetItemFromID($entry.survivorId)`.
-  - Confirms survivor is not located in **Deleted Items** (`olFolderDeletedItems` = 3).
-  - Recalculates survivor's DNA fingerprint to ensure it has not been altered; skips cleanup if survivor is missing, deleted, or modified.
-  - Verifies candidate duplicate is distinct from survivor (`$target.EntryID -ne $survivor.EntryID`) and matches cluster DNA.
-- **Safe Isolation vs. Permanent Purge:**
-  - Safe isolation (default): Relocates redundant copies to **Deleted Items** via `Robust-Move`, preserving read/unread flags.
-  - Permanent purge: Requires explicit keyword typing confirmation ("PURGE") before executing permanent deletion.
-  - Deterministic RCW release via `Release-Com` ensures zero COM handle leaks during high-throughput cleanup (> 3,000 items/sec).
-
-## 7. PROJECT FILE MANIFEST
+## 5. PROJECT FILE MANIFEST
 
 ### Launchers & Build Scripts
-- `.\DeskGuard_for_Microsoft_Outlook.bat`: Primary launcher batch script (terminates existing Electron instances and launches project root).
-- `.\build.bat`: Standalone distribution packager script (`npm run package`).
-- `.\silent_launcher.vbs`: VBScript launcher for background service mode (`--service`) with hidden window styling.
-- `.\developer_tools\Pull_Code_files.py`: AI context aggregator and project bundler (packs codebase into <= 10 files with manifest and directory tree).
-- `.\developer_tools\Find_and_Remove_Comments.py`: Multi-language comment stripper, delimiter syntax validator, and scope-aware duplicate declaration detector.
-- `.\developer_tools\native_mapi_poc\`: Standalone native MAPI Table bulk-querying benchmark and proof-of-concept engine (>1,000 items/sec, <30MB RAM).
-- `.\docs\ARCHITECTURAL_MIGRATION_ROADMAP.md`: Formal architectural design specification for migrating from Electron/PowerShell to native compiled sidecar (Rust/C++ + Tauri v2 / WebView2).
+- `.\DeskGuard_for_Microsoft_Outlook.bat`: Primary launcher batch script.
+- `.\build.cmd`: Production build and packaging script.
+- `.\build_pkg.js`: Robocopy-backed packaging script bypassing Windows Search Indexer file locks.
+- `.\silent_launcher.vbs`: VBScript launcher for background service mode (`--service`).
+- `.\developer_tools\Pull_Code_files.py`: AI context aggregator and project bundler.
+- `.\developer_tools\Find_and_Remove_Comments.py`: Multi-language comment stripper and syntax validator.
 
 ### Application Core
 - `main.js`: Single-Writer process coordinator, Named Pipe server/client, Windows registry startup manager, DPAPI encryption, and system tray lifecycle.
 - `preload.js`: Secure IPC context bridge exposing `window.securityApi` to the renderer.
+- `vault_db.js`: SQLite database manager with WAL mode, indexing, migrations, and user relocation support.
 - `outlook-scanner.ps1`: Dual-mode PowerShell engine (`Worker` and `Scanner`), Named Mutex STA synchronization, RunspacePool multi-threading, MAPI COM hierarchy automation.
-- `package.json`: NPM package definition, Electron runtime configuration, and packager scripts.
+- `package.json`: NPM package definition and build scripts.
 - `package-lock.json`: Dependency lock file.
 
 ### User Interface (Renderer)
 - `index.html`: Main UI markup containing titlebar, sidebar navigation, incident tables, and forensic inspection modals.
 - `style.css`: Unified enterprise dark-mode styling and UI components.
 - `ui_main.js`: Global state orchestration, IPC event subscribers, and tab navigation.
-- `ui_list.js`: Incident list rendering, column sorting, and deletion workflows.
+- `ui_list.js`: Virtualized incident list rendering, column sorting, `Moved by User ?` badges, and deletion workflows.
 - `ui_forensics.js`: Deep forensic inspection modal (RFC transport headers and plain body views).
 - `ui_duplicates.js`: Redundant email discovery view, progress trackers, and batch cleanup triggers.
 - `ui_engines.js`: Multi-stage security pipeline telemetry and live engine log streamer.
 - `ui_history.js`: Historical mailbox audit trigger and crawl monitoring.
-- `ui_settings.js`: Configuration editor for weights, thresholds, whitelists, blacklists, API keys, and boot startup.
-- `ui_reset.js`: Factory reset controller for purging storage and logs.
+- `ui_settings.js`: Configuration editor with centered titles, Emails Scan Speed, live Threat Intelligence explainers, and upgrade options.
+- `ui_reset.js`: Controller for Safe Upgrade and Scorched Earth factory reset.
 
 ### Assets & Storage
 - `icon.png`, `icon_on.png`, `icon_off.png`: Application and window icons.

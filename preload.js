@@ -22,9 +22,11 @@ contextBridge.exposeInMainWorld('securityApi', {
     exportConfig: () => invoke('export-config'),
     importConfig: () => invoke('import-config'),
     openLogsFolder: () => invoke('open-logs-folder'),
-    resetApp: () => invoke('app-reset'),
+    resetApp: (mode) => invoke('app-reset', mode),
     minimizeWindow: () => ipcRenderer.send('window-minimize'),
+    maximizeWindow: () => ipcRenderer.send('window-maximize'),
     hideWindow: () => ipcRenderer.send('window-hide'),
+    closeWindow: () => ipcRenderer.send('window-close'),
     releaseEmail: value => invoke('release-email', value),
     cleanupListeners: () => {
         ipcRenderer.removeAllListeners('outlook-scan-update');

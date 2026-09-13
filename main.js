@@ -463,8 +463,91 @@ class SafeIPCParser {
 const MAX_PROCESSED_IDS = 100000;
 const MAX_STATS_PER_CAT = 5000;
 
+function loadInitialConfig() {
+    try {
+        const configPath = path.join(USER_DATA, 'config.json');
+        if (fs.existsSync(configPath)) {
+            const raw = fs.readFileSync(configPath, 'utf8');
+            const parsed = JSON.parse(raw);
+            return { ...DEFAULT_CONFIG, ...parsed };
+        }
+    } catch (e) {}
+    return { ...DEFAULT_CONFIG };
+}
+
+function loadInitialData() {
+    const dataPath = path.join(USER_DATA, 'data.json');
+    const bakPath = path.join(USER_DATA, 'data.json.bak');
+    let rawData = null;
+    let loadedFromBak = false;
+
+    if (fs.existsSync(dataPath)) {
+        try {
+            const content = fs.readFileSync(dataPath, 'utf8');
+            if (content && content.trim().length > 0) {
+                rawData = JSON.parse(content);
+            }
+        } catch (err) {
+            logToFile(`[State Persistence] Warning: data.json read error (${err.message}), falling back to backup.`, 'WARN');
+        }
+    }
+
+    if (!rawData && fs.existsSync(bakPath)) {
+        try {
+            const bakContent = fs.readFileSync(bakPath, 'utf8');
+            if (bakContent && bakContent.trim().length > 0) {
+                rawData = JSON.parse(bakContent);
+                loadedFromBak = true;
+                logToFile(`[State Persistence] Successfully restored state from data.json.bak.`, 'INFO');
+            }
+        } catch (err) {
+            logToFile(`[State Persistence Error] data.json.bak read error: ${err.message}`, 'ERROR');
+        }
+    }
+
+    let initialData = rawData || { ...DEFAULT_DATA };
+    if (!initialData.stats || typeof initialData.stats !== 'object') {
+        initialData.stats = { malicious: [], suspicious: [], spam: [], safe: [] };
+    }
+
+    for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
+        if (!Array.isArray(initialData.stats[cat])) {
+            initialData.stats[cat] = [];
+        } else {
+            initialData.stats[cat].forEach(item => {
+                if (!item.subject && item.details) item.subject = item.details;
+                if (!item.details && item.subject) item.details = item.subject;
+                if (item.userMoved && !item.userMovedStory) {
+                    item.userMovedStory = `Originally quarantined by DeskGuard, but you manually moved this email to folder '${item.currentFolder || 'another folder'}' inside Outlook. DeskGuard respects your choice and will keep it here.`;
+                }
+            });
+        }
+    }
+
+    // VaultDB Fallback: If in-memory count is 0, attempt restoring from SQLite Vault DB
+    const totalInMemory = Object.values(initialData.stats).reduce((sum, arr) => sum + (arr ? arr.length : 0), 0);
+    if (totalInMemory === 0 && vaultDB && typeof vaultDB.getAllCategorizedEmails === 'function') {
+        try {
+            const vaultItems = vaultDB.getAllCategorizedEmails(2000);
+            const vaultCount = Object.values(vaultItems).reduce((sum, arr) => sum + (arr ? arr.length : 0), 0);
+            if (vaultCount > 0) {
+                initialData.stats = vaultItems;
+                logToFile(`[State Persistence] Restored ${vaultCount} scanned emails from SQLite Vault DB.`, 'INFO');
+            }
+        } catch (vErr) {
+            logToFile(`[State Persistence] Vault DB fallback error: ${vErr.message}`, 'WARN');
+        }
+    }
+
+    logToFile(`[State Persistence] Initialized state: ${(initialData.processedIds || []).length} processed IDs, ${(initialData.releasedFingerprints || []).length} released fingerprints, ${Object.values(initialData.stats).reduce((s, a) => s + (a ? a.length : 0), 0)} categorized incidents.`);
+    return initialData;
+}
+
+const initialSavedData = loadInitialData();
+
 let mainWindow = null, tray = null, isQuitting = false;
-let isEnabled = isServiceMode ? (configStore ? !!configStore.get('enabled') : true) : DEFAULT_CONFIG.enabled;
+let configCache = loadInitialConfig();
+let isEnabled = configCache.enabled !== undefined ? !!configCache.enabled : true;
 let uiPipeClient = null, serviceSession = null, serviceSpawnInFlight = false;
 let pipeServer = null, activeConnections = new Set(), isScanning = false, currentScanChild = null;
 let psWorker = null;
@@ -472,8 +555,7 @@ let statsBuffer = { malicious: [], suspicious: [], spam: [], safe: [] };
 let bufferTimer = null;
 let watchdogTimer = null;
 let lastHeartbeat = Date.now();
-let configCache = { ...DEFAULT_CONFIG };
-let statsCache = { ...DEFAULT_DATA.stats };
+let statsCache = initialSavedData.stats;
 
 function broadcastToUi(msg) {
     if (isServiceMode) {
@@ -525,8 +607,8 @@ function broadcastToUi(msg) {
 }
 
 // IN-MEMORY STATE PERSISTENCE & TELEMETRY INGESTION ENGINE
-const processedIdsCache = new Set();
-const releasedFingerprintsCache = new Set();
+const processedIdsCache = new Set(initialSavedData.processedIds || []);
+const releasedFingerprintsCache = new Set(initialSavedData.releasedFingerprints || []);
 let uncommittedProcessedIdsCount = 0;
 let isPersistenceDirty = false;
 let flushTimer = null;
@@ -535,60 +617,6 @@ let flushPending = false;
 let flushRetryCount = 0;
 const FLUSH_INTERVAL_MS = 5000;
 const MAX_UNCOMMITTED_ITEMS = 500;
-
-if (isServiceMode) {
-    const dataPath = path.join(USER_DATA, 'data.json');
-    const bakPath = path.join(USER_DATA, 'data.json.bak');
-    let rawData = null;
-    let loadedFromBak = false;
-
-    if (fs.existsSync(dataPath)) {
-        try {
-            const content = fs.readFileSync(dataPath, 'utf8');
-            if (content && content.trim().length > 0) {
-                rawData = JSON.parse(content);
-            }
-        } catch (err) {
-            logToFile(`[State Persistence] Warning: data.json read error (${err.message}), falling back to backup.`, 'WARN');
-        }
-    }
-
-    if (!rawData && fs.existsSync(bakPath)) {
-        try {
-            const bakContent = fs.readFileSync(bakPath, 'utf8');
-            if (bakContent && bakContent.trim().length > 0) {
-                rawData = JSON.parse(bakContent);
-                loadedFromBak = true;
-                logToFile(`[State Persistence] Successfully restored state from data.json.bak.`, 'INFO');
-            }
-        } catch (err) {
-            logToFile(`[State Persistence Error] data.json.bak read error: ${err.message}`, 'ERROR');
-        }
-    }
-
-    const initialData = rawData || DEFAULT_DATA;
-    if (Array.isArray(initialData.processedIds)) {
-        initialData.processedIds.forEach(id => processedIdsCache.add(id));
-    }
-    if (Array.isArray(initialData.releasedFingerprints)) {
-        initialData.releasedFingerprints.forEach(fp => releasedFingerprintsCache.add(fp));
-    }
-    if (initialData.stats && typeof initialData.stats === 'object') {
-        statsCache = initialData.stats;
-        for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
-            if (Array.isArray(statsCache[cat])) {
-                statsCache[cat].forEach(item => {
-                    if (!item.subject && item.details) item.subject = item.details;
-                    if (!item.details && item.subject) item.details = item.subject;
-                });
-            }
-        }
-    } else {
-        statsCache = { ...DEFAULT_DATA.stats };
-    }
-
-    logToFile(`[State Persistence] Initialized state from ${loadedFromBak ? 'backup' : (rawData ? 'data.json' : 'defaults')}: ${processedIdsCache.size} processed IDs, ${releasedFingerprintsCache.size} released fingerprints.`);
-}
 
 function addProcessedId(fid) {
     if (!fid) return false;
@@ -932,7 +960,7 @@ function startOutlookStandbyWatcher() {
             broadcastToUi({ type: 'outlook-status', running: true, standby: false });
             runOutlookScanner();
         }
-    }, 15000);
+    }, 5000);
 }
 
 async function runOutlookScanner() {
@@ -941,7 +969,7 @@ async function runOutlookScanner() {
         return;
     }
     if (!configStore || !configStore.get('enabled')) return;
-    if (isScanning) {
+    if (isScanning && currentScanChild && !currentScanChild.killed && currentScanChild.exitCode === null) {
         logToFile('Scanner already running. Skipping duplicate start.');
         return;
     }
@@ -1073,7 +1101,10 @@ async function runOutlookScanner() {
                     if (p.status !== 'MONITORING' && p.status !== 'INFO' && p.status !== 'ERROR') {
                         if (!p.verdict) return; // Skip status messages without a verdict
                         const v = String(p.verdict).toLowerCase();
-                        const cat = v.includes('malicious') ? 'malicious' : (v.includes('spam') ? 'spam' : 'safe');
+                        const cat = v.includes('malicious') ? 'malicious' : (v.includes('suspicious') ? 'suspicious' : (v.includes('spam') ? 'spam' : 'safe'));
+                        if (p.userMoved && !p.userMovedStory) {
+                            p.userMovedStory = `Originally quarantined by DeskGuard, but you manually moved this email to folder '${p.currentFolder || 'another folder'}' inside Outlook. DeskGuard respects your choice and will keep it here.`;
+                        }
                         const fid = p.fingerprint || p.entryId || p.originalEntryId;
                         if (fid) {
                             addProcessedId(fid);
@@ -1295,19 +1326,34 @@ function startService() {
                                 isPersistenceDirty = false;
                                 statsBuffer = { malicious: [], suspicious: [], spam: [], safe: [] };
                                 statsCache = { ...DEFAULT_DATA.stats };
-                                backupStoreBeforeWrite('config');
-                                if (configStore) configStore.clear(); 
+                                const isSafeUpgrade = m.data && m.data.mode === 'safe';
+                                if (!isSafeUpgrade) {
+                                    backupStoreBeforeWrite('config');
+                                    if (configStore) configStore.clear(); 
+                                } 
                                 const dataPath = path.join(USER_DATA, 'data.json');
                                 const bakPath = path.join(USER_DATA, 'data.json.bak');
                                 try {
-                                    if (fs.existsSync(dataPath)) fs.copyFileSync(dataPath, bakPath);
-                                    fs.writeFileSync(dataPath, JSON.stringify(DEFAULT_DATA, null, 2), 'utf8');
+                                    if (fs.existsSync(dataPath)) fs.unlinkSync(dataPath);
+                                    if (fs.existsSync(bakPath)) fs.unlinkSync(bakPath);
+                                } catch {}
+                                try {
+                                    if (vaultDB) vaultDB.close();
+                                    const vaultFiles = [
+                                        path.join(USER_DATA, 'deskguard_vault.db'),
+                                        path.join(USER_DATA, 'deskguard_vault.db-wal'),
+                                        path.join(USER_DATA, 'deskguard_vault.db-shm')
+                                    ];
+                                    vaultFiles.forEach(f => {
+                                        if (fs.existsSync(f)) { try { fs.unlinkSync(f); } catch (e) {} }
+                                    });
                                 } catch {}
                             } catch (err) {
                                 logToFile(`[Storage Reset Error]: ${err.message}`, 'ERROR');
                             }
                             try {
                                 if (fs.existsSync(LOG_DIR)) fs.rmSync(LOG_DIR, { recursive: true, force: true });
+                                if (fs.existsSync(FORENSICS_DIR)) fs.rmSync(FORENSICS_DIR, { recursive: true, force: true });
                             } catch (err) { }
                             process.exit(0); 
                         } 
@@ -1325,6 +1371,16 @@ function startService() {
                         if (m.payload === 'ResetDuplicateStack') {
                             const worker = getPsWorker();
                             if (worker && worker.stdin) worker.stdin.write(JSON.stringify({ action: 'ResetDuplicateStack' }) + '\n');
+                        }
+                        if (m.payload === 'StopAllScans') {
+                            logToFile('Security Service: StopAllScans received. Halting all scanner and worker processes.');
+                            if (standbyWatcherTimer) { clearInterval(standbyWatcherTimer); standbyWatcherTimer = null; }
+                            if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+                            if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+                            if (currentScanChild) { killProcessTree(currentScanChild); currentScanChild = null; }
+                            if (psWorker) { killProcessTree(psWorker); psWorker = null; }
+                            isScanning = false;
+                            broadcastToUi({ type: 'outlook-status', running: false, standby: false });
                         }
                     }
                 } catch (err) { }
@@ -1574,6 +1630,79 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
+async function setProtectionState(targetEnabled) {
+    const state = !!targetEnabled;
+    isEnabled = state;
+    configCache.enabled = state;
+    configCache.onAccessEnabled = state;
+    configCache.deepHistoryScanEnabled = state;
+    updateTrayState();
+
+    if (configStore) {
+        try {
+            configStore.set('enabled', state);
+            configStore.set('onAccessEnabled', state);
+            configStore.set('deepHistoryScanEnabled', state);
+        } catch {}
+    } else {
+        try {
+            const configPath = path.join(USER_DATA, 'config.json');
+            if (fs.existsSync(configPath)) {
+                const cur = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                cur.enabled = state;
+                cur.onAccessEnabled = state;
+                cur.deepHistoryScanEnabled = state;
+                fs.writeFileSync(configPath, JSON.stringify(cur, null, 2), 'utf8');
+            }
+        } catch {}
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('status-sync', {
+            enabled: state,
+            stats: statsCache,
+            config: configCache
+        });
+        mainWindow.webContents.send('outlook-status', {
+            running: state,
+            standby: !state
+        });
+    }
+
+    if (uiPipeClient) {
+        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'enabled', value: state }) + '\n');
+        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'onAccessEnabled', value: state }) + '\n');
+        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'deepHistoryScanEnabled', value: state }) + '\n');
+        if (!state) {
+            uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'StopAllScans' }) + '\n');
+        }
+    }
+
+    if (isServiceMode) {
+        if (!state) {
+            logToFile('Security Service: Protection stopped. Halting all scanner and worker processes...');
+            if (standbyWatcherTimer) { clearInterval(standbyWatcherTimer); standbyWatcherTimer = null; }
+            if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+            if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+            if (currentScanChild) { killProcessTree(currentScanChild); currentScanChild = null; }
+            if (psWorker) { killProcessTree(psWorker); psWorker = null; }
+            isScanning = false;
+            broadcastToUi({ type: 'outlook-status', running: false, standby: false });
+        } else {
+            logToFile('Security Service: Protection activated. Launching engine...');
+            consecutiveEngineFailures = 0;
+            isStandbyMode = false;
+            ensureOutlookRunning().then(running => {
+                if (running) {
+                    runOutlookScanner();
+                } else {
+                    startOutlookStandbyWatcher();
+                }
+            });
+        }
+    }
+}
+
 function updateTrayState() {
     if (isServiceMode || !tray) return;
     const iconName = isEnabled ? 'tray_on.png' : 'tray_off.png';
@@ -1586,7 +1715,7 @@ function updateTrayState() {
         { label: 'Show Dashboard', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
         { label: isEnabled ? 'Security: ACTIVE' : 'Security: DISABLED', enabled: false },
         { label: isEnabled ? 'Stop Protection' : 'Start Protection', click: () => {
-            if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'enabled', value: !isEnabled }) + '\n');
+            setProtectionState(!isEnabled);
         } },
         { type: 'separator' },
         { label: 'Exit Application', click: () => {
@@ -1610,7 +1739,17 @@ const pipeReq = (m) => new Promise(resolve => {
 });
 
 ipcMain.on('window-minimize', () => { if (mainWindow) mainWindow.minimize(); });
+ipcMain.on('window-maximize', () => { 
+    if (mainWindow) {
+        if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+        } else {
+            mainWindow.maximize();
+        }
+    } 
+});
 ipcMain.on('window-hide', () => { if (mainWindow) mainWindow.hide(); });
+ipcMain.on('window-close', () => { if (mainWindow) mainWindow.hide(); });
 
 ipcMain.handle('get-config', () => {
     let cfg = { ...DEFAULT_CONFIG, ...configCache };
@@ -1704,18 +1843,8 @@ ipcMain.handle('set-processed-ids', (e, v) => {
 });
 
 ipcMain.handle('set-enabled', (e, v) => { 
-    isEnabled = !!v;
-    configCache.enabled = !!v;
-    updateTrayState();
-    if (uiPipeClient) { 
-        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'enabled', value: v }) + '\n'); 
-        if (v) {
-            logToFile('UI: Enabling Protection. Resetting scan state for immediate start...');
-            isScanning = false; 
-        }
-        return { ok: true }; 
-    } 
-    return { ok: false, error: 'Service initializing' }; 
+    setProtectionState(!!v);
+    return { ok: true }; 
 });
 ipcMain.handle('set-history-enabled', (e, v) => {
     configCache.historyScanEnabled = v;
@@ -1800,9 +1929,18 @@ ipcMain.handle('set-threat-intel-level', (e, v) => {
 ipcMain.handle('set-first-run', (e, v) => {
     const isFirst = !!v;
     configCache.firstRun = isFirst;
+    if (configStore) {
+        try { configStore.set('firstRun', isFirst); } catch {}
+    } else {
+        try {
+            const configPath = path.join(USER_DATA, 'config.json');
+            const cur = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : { ...DEFAULT_CONFIG };
+            cur.firstRun = isFirst;
+            fs.writeFileSync(configPath, JSON.stringify(cur, null, 2), 'utf8');
+        } catch {}
+    }
     if (uiPipeClient) {
         uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'firstRun', value: isFirst }) + '\n');
-        return { ok: true };
     }
     return { ok: true };
 });
@@ -1961,47 +2099,103 @@ ipcMain.handle('delete-email', async (e, d) => {
 });
 
 ipcMain.handle('verify-existence', async (e, d) => {
-    if (!uiPipeClient || !d.items || d.items.length === 0) return { removedCount: 0 };
+    if (!uiPipeClient || !d.items || d.items.length === 0) return { removedCount: 0, userMovedCount: 0 };
     const rid = crypto.randomBytes(8).toString('hex');
     return new Promise(resolve => {
         const timeout = setTimeout(() => {
             reqHandlers.delete(rid);
-            resolve({ removedCount: 0 });
+            resolve({ removedCount: 0, userMovedCount: 0 });
         }, 5000);
         reqHandlers.set(rid, (val) => {
             clearTimeout(timeout);
             const removed = (val && (val.removed || (val.data && val.data.removed))) || [];
+            const userMoved = (val && (val.userMoved || (val.data && val.data.userMoved))) || [];
+            let statsChanged = false;
+            const currentStats = statsCache || { ...DEFAULT_DATA.stats };
+
             if (removed.length > 0) {
-                const currentStats = statsCache || { ...DEFAULT_DATA.stats };
                 const removedIds = new Set(removed.map(r => r.entryId));
                 for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
                     if (currentStats[cat]) {
                         currentStats[cat] = currentStats[cat].filter(i => !removedIds.has(i.entryId));
                     }
                 }
+                statsChanged = true;
+                logToFile(`Verification: Pruned ${removed.length} missing/deleted email(s) from incident records.`);
+            }
+
+            if (userMoved.length > 0) {
+                const movedMap = new Map();
+                for (const um of userMoved) {
+                    if (um && um.entryId) {
+                        movedMap.set(um.entryId, um);
+                        try {
+                            vaultDB.updateUserMoved(um.entryId, um.currentFolder || 'Unknown');
+                        } catch (dbErr) {
+                            logToFile(`Verification: vaultDB.updateUserMoved error for ${um.entryId}: ${dbErr.message}`);
+                        }
+                    }
+                }
+                for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
+                    if (currentStats[cat]) {
+                        for (const item of currentStats[cat]) {
+                            if (movedMap.has(item.entryId)) {
+                                const info = movedMap.get(item.entryId);
+                                item.userMoved = true;
+                                item.currentFolder = info.currentFolder || 'Unknown';
+                                item.userMovedStory = `Relocated by user to "${item.currentFolder}". DeskGuard will not move or re-quarantine this email again.`;
+                                statsChanged = true;
+                            }
+                        }
+                    }
+                }
+                logToFile(`Verification: Detected ${userMoved.length} email(s) relocated by user in Outlook.`);
+            }
+
+            if (statsChanged) {
                 statsCache = currentStats;
                 if (uiPipeClient) {
                     uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'stats', value: currentStats }) + '\n');
                 }
                 broadcastToUi({ type: 'stats-update', data: { full: true, stats: currentStats } });
-                logToFile(`Verification: Pruned ${removed.length} missing/deleted email(s) from incident records.`);
-                resolve({ removedCount: removed.length });
-            } else {
-                resolve({ removedCount: 0 });
             }
+            resolve({ removedCount: removed.length, userMovedCount: userMoved.length });
         });
         uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Check-Existence', rid, data: d }) + '\n');
     });
 });
 
 ipcMain.handle('open-logs-folder', () => shell.openPath(LOG_DIR));
-ipcMain.handle('app-reset', () => { 
-    if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Reset' }) + '\n'); 
-    configCache = { ...DEFAULT_CONFIG, enabled: false };
+ipcMain.handle('app-reset', (e, mode) => { 
+    const isSafeUpgrade = (mode === 'safe');
+    if (uiPipeClient) {
+        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'Reset', data: { mode: isSafeUpgrade ? 'safe' : 'scorched' } }) + '\n'); 
+    }
+    if (!isSafeUpgrade) {
+        configCache = { ...DEFAULT_CONFIG, enabled: false };
+        try { applyWindowsStartupSetting(false); } catch (err) {}
+    }
     statsCache = { ...DEFAULT_DATA.stats };
+    if (vaultDB) {
+        try { vaultDB.close(); } catch (err) {}
+    }
     setTimeout(() => {
         try {
+            const vaultFiles = [
+                path.join(USER_DATA, 'deskguard_vault.db'),
+                path.join(USER_DATA, 'deskguard_vault.db-wal'),
+                path.join(USER_DATA, 'deskguard_vault.db-shm')
+            ];
+            vaultFiles.forEach(f => { if (fs.existsSync(f)) { try { fs.unlinkSync(f); } catch (e) {} } });
+            const dataPath = path.join(USER_DATA, 'data.json');
+            const bakPath = path.join(USER_DATA, 'data.json.bak');
+            if (fs.existsSync(dataPath)) try { fs.unlinkSync(dataPath); } catch (e) {}
+            if (fs.existsSync(bakPath)) try { fs.unlinkSync(bakPath); } catch (e) {}
+            if (!isSafeUpgrade && configStore) {
+                try { configStore.clear(); } catch (e) {}
+            }
             if (fs.existsSync(LOG_DIR)) fs.rmSync(LOG_DIR, { recursive: true, force: true });
+            if (fs.existsSync(FORENSICS_DIR)) fs.rmSync(FORENSICS_DIR, { recursive: true, force: true });
         } catch (err) {}
         app.relaunch(); 
         app.exit(); 

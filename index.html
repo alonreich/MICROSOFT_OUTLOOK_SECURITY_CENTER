@@ -13,10 +13,13 @@
             DeskGuard for Microsoft Outlook
         </div>
         <div class="titlebar-controls">
-            <div class="control-btn" onclick="window.winMinimize()">
+            <div class="control-btn" onclick="window.winMinimize()" title="Minimize" aria-label="Minimize">
                 <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1"/></svg>
             </div>
-            <div class="control-btn close" onclick="window.winHide()">
+            <div class="control-btn" onclick="window.winMaximize()" title="Maximize / Restore" aria-label="Maximize">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+            </div>
+            <div class="control-btn close" onclick="window.winClose()" title="Close (Hide to Tray)" aria-label="Close">
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M10 1.013L8.987 0 5 3.987 1.013 0 0 1.013 3.987 5 0 8.987 1.013 10 5 6.013 8.987 10 10 8.987 6.013 5z"/></svg>
             </div>
         </div>
@@ -204,18 +207,34 @@
     </div>
 
     <div id="settings-modal" class="modal-overlay" onclick="handleOverlayClick(event, 'settings-modal')">
-        <div class="modal" style="width: 800px;">
-            <div class="modal-header">
-                <h2 style="margin: 0; font-weight: 300;">System Configuration</h2>
-                <button onclick="closeSettings()" style="background: transparent; border: none; font-size: 1.5rem; color: var(--muted); padding: 0; width: 32px; height: 32px;">&times;</button>
+        <div class="modal modal-settings" style="width: 850px; max-width: 95vw; height: 88vh; max-height: calc(100vh - 70px); display: flex; flex-direction: column;">
+            <div class="modal-header" style="flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66Z"/></svg>
+                    <h2 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--text);">System Configuration &amp; Protection Settings</h2>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button id="save-settings-btn-top" class="primary" style="padding: 7px 16px; font-size: 0.8rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Changes
+                    </button>
+                    <button type="button" class="modal-close-btn" onclick="closeSettings()" title="Close Settings (Esc)" aria-label="Close">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
             </div>
-            <div class="modal-body" id="settings-body">
+            <div class="modal-body" id="settings-body" style="flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 22px 24px;">
                 <!-- ui_settings.js injects content here -->
             </div>
-            <div class="modal-footer">
-                <button onclick="factoryReset()" style="color: var(--danger); margin-right: auto; background: transparent; border: none;">Factory Reset</button>
-                <button onclick="closeSettings()">Cancel</button>
-                <button id="save-settings-btn" class="primary">Save Changes</button>
+            <div class="modal-footer" style="flex-shrink: 0; background: var(--surface-high); border-top: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;">
+                <button type="button" onclick="closeSettings()" style="background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancel / Close</button>
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <span id="settings-unsaved-indicator" style="display: none; font-size: 0.75rem; color: var(--warn); font-weight: 600;">● Unsaved Changes</span>
+                    <button id="save-settings-btn" class="primary" style="padding: 9px 24px; font-size: 0.85rem; font-weight: 700; box-shadow: 0 0 15px rgba(0, 120, 212, 0.4);">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Changes
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -319,7 +338,7 @@
     </div>
 
     <!-- FIRST-TIME SETUP WIZARD MODAL -->
-    <div id="first-run-wizard-modal" class="modal-overlay" style="display: none;">
+    <div id="first-run-wizard-modal" class="modal-overlay" style="display: none;" onclick="handleOverlayClick(event, 'first-run-wizard-modal')">
         <div class="modal" style="width: 720px; max-height: 90vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: linear-gradient(135deg, rgba(0,120,212,0.15) 0%, rgba(20,22,30,0.95) 100%);">
                 <div style="display: flex; align-items: center; gap: 12px;">
