@@ -128,6 +128,9 @@ DeskGuard executes a 5-stage analysis pipeline:
 - `.\build.bat`: Standalone distribution packager script (`npm run package`).
 - `.\silent_launcher.vbs`: VBScript launcher for background service mode (`--service`) with hidden window styling.
 - `.\developer_tools\Pull_Code_files.py`: AI context aggregator and project bundler (packs codebase into <= 10 files with manifest and directory tree).
+- `.\developer_tools\Find_and_Remove_Comments.py`: Multi-language comment stripper, delimiter syntax validator, and scope-aware duplicate declaration detector.
+- `.\developer_tools\native_mapi_poc\`: Standalone native MAPI Table bulk-querying benchmark and proof-of-concept engine (>1,000 items/sec, <30MB RAM).
+- `.\docs\ARCHITECTURAL_MIGRATION_ROADMAP.md`: Formal architectural design specification for migrating from Electron/PowerShell to native compiled sidecar (Rust/C++ + Tauri v2 / WebView2).
 
 ### Application Core
 - `main.js`: Single-Writer process coordinator, Named Pipe server/client, Windows registry startup manager, DPAPI encryption, and system tray lifecycle.

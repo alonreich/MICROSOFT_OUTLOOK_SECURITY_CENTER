@@ -202,9 +202,35 @@ function createIncidentRowElement() {
     const div = document.createElement('div');
     div.className = 'list-item incident-grid virtual-row';
 
+    const dateEl = document.createElement('div');
+    dateEl.style.fontFamily = 'monospace';
+    dateEl.style.fontSize = '0.7rem';
+    dateEl.style.color = 'var(--muted)';
+    dateEl.style.overflow = 'hidden';
+    dateEl.style.textOverflow = 'ellipsis';
+    dateEl.style.whiteSpace = 'nowrap';
+
     const timeEl = document.createElement('div');
     timeEl.style.fontFamily = 'monospace';
     timeEl.style.fontSize = '0.7rem';
+    timeEl.style.color = 'var(--muted)';
+    timeEl.style.overflow = 'hidden';
+    timeEl.style.textOverflow = 'ellipsis';
+    timeEl.style.whiteSpace = 'nowrap';
+
+    const fromEl = document.createElement('div');
+    fromEl.style.overflow = 'hidden';
+    fromEl.style.textOverflow = 'ellipsis';
+    fromEl.style.whiteSpace = 'nowrap';
+    fromEl.style.fontSize = '0.75rem';
+    fromEl.style.color = 'var(--text)';
+
+    const toEl = document.createElement('div');
+    toEl.style.overflow = 'hidden';
+    toEl.style.textOverflow = 'ellipsis';
+    toEl.style.whiteSpace = 'nowrap';
+    toEl.style.fontSize = '0.75rem';
+    toEl.style.color = 'var(--muted)';
 
     const subjEl = document.createElement('div');
     subjEl.style.fontWeight = '600';
@@ -213,43 +239,85 @@ function createIncidentRowElement() {
     subjEl.style.textOverflow = 'ellipsis';
     subjEl.style.whiteSpace = 'nowrap';
 
-    const senderEl = document.createElement('div');
-    senderEl.style.overflow = 'hidden';
-    senderEl.style.textOverflow = 'ellipsis';
-    senderEl.style.whiteSpace = 'nowrap';
-    senderEl.style.fontSize = '0.75rem';
-
     const badgeCol = document.createElement('div');
     const badgeSpan = document.createElement('span');
     badgeSpan.className = 'badge';
     badgeCol.appendChild(badgeSpan);
 
-    div.appendChild(timeEl);
-    div.appendChild(subjEl);
-    div.appendChild(senderEl);
-    div.appendChild(badgeCol);
+    const scoreEl = document.createElement('div');
+    scoreEl.style.fontFamily = 'monospace';
+    scoreEl.style.fontSize = '0.75rem';
+    scoreEl.style.fontWeight = '700';
+    scoreEl.style.textAlign = 'right';
 
-    div._cells = { timeEl, subjEl, senderEl, badgeSpan };
+    div.appendChild(dateEl);
+    div.appendChild(timeEl);
+    div.appendChild(fromEl);
+    div.appendChild(toEl);
+    div.appendChild(subjEl);
+    div.appendChild(badgeCol);
+    div.appendChild(scoreEl);
+
+    div._cells = { dateEl, timeEl, fromEl, toEl, subjEl, badgeSpan, scoreEl };
     return div;
 }
 
 function updateIncidentRowElement(div, item, index) {
     const cells = div._cells;
-    const ts = new Date(item.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    
+    // Format Date & Time
+    let dateStr = item.date || '';
+    let timeStr = item.time || '';
+    if (!dateStr || !timeStr) {
+        if (item.timestamp) {
+            const d = new Date(item.timestamp);
+            if (!isNaN(d.getTime())) {
+                if (!dateStr) dateStr = d.toISOString().slice(0, 10);
+                if (!timeStr) timeStr = d.toTimeString().slice(0, 8);
+            }
+        }
+    }
+    dateStr = dateStr || '----/--/--';
+    timeStr = timeStr || '--:--:--';
+
+    if (cells.dateEl.textContent !== dateStr) cells.dateEl.textContent = dateStr;
+    if (cells.timeEl.textContent !== timeStr) cells.timeEl.textContent = timeStr;
+
+    const fromText = item.sender || item.from || 'Unknown';
+    if (cells.fromEl.textContent !== fromText) {
+        cells.fromEl.textContent = fromText;
+        cells.fromEl.title = fromText;
+    }
+
+    const toText = item.to || item.recipient || item.recips || '';
+    const displayTo = toText || '—';
+    if (cells.toEl.textContent !== displayTo) {
+        cells.toEl.textContent = displayTo;
+        cells.toEl.title = toText;
+    }
+
+    const subjText = item.subject || item.details || '(No Subject)';
+    if (cells.subjEl.textContent !== subjText) {
+        cells.subjEl.textContent = subjText;
+        cells.subjEl.title = subjText;
+    }
+
     const verdict = item.verdict || 'Pending';
     const vLower = verdict.toLowerCase();
     const verdictClass = vLower.includes('malicious') ? 'badge-malicious' : (vLower.includes('spam') ? 'badge-spam' : 'badge-safe');
 
-    if (cells.timeEl.textContent !== ts) cells.timeEl.textContent = ts;
-    const subjText = item.subject || 'No Subject';
-    if (cells.subjEl.textContent !== subjText) cells.subjEl.textContent = subjText;
-    const senderText = item.sender || 'Unknown';
-    if (cells.senderEl.textContent !== senderText) cells.senderEl.textContent = senderText;
     if (cells.badgeSpan.textContent !== verdict) cells.badgeSpan.textContent = verdict;
     const targetBadgeClass = `badge ${verdictClass}`;
     if (cells.badgeSpan.className !== targetBadgeClass) cells.badgeSpan.className = targetBadgeClass;
 
-    const isSelected = window.AppState.selectedId === (item.entryId || item.fingerprint);
+    const numScore = parseInt(item.score);
+    const displayScore = isNaN(numScore) ? '--' : `${numScore}%`;
+    if (cells.scoreEl.textContent !== displayScore) {
+        cells.scoreEl.textContent = displayScore;
+        cells.scoreEl.style.color = (numScore < 50) ? 'var(--danger)' : (numScore < 80 ? 'var(--warn)' : 'var(--ok)');
+    }
+
+    const isSelected = window.AppState.selectedId === (item.entryId || item.fingerprint || item.id);
     if (isSelected) {
         if (!div.classList.contains('active')) div.classList.add('active');
     } else {
@@ -292,25 +360,46 @@ window.renderList = (items, category, forceResetScroll = false) => {
     const sorted = [...(items || [])];
     const { key, asc } = window.sortOrder;
     sorted.sort((a, b) => {
-        let valA = a[key] || '';
-        let valB = b[key] || '';
-        if (key === 'timestamp') {
-            valA = new Date(valA).getTime() || 0;
-            valB = new Date(valB).getTime() || 0;
+        if (key === 'date' || key === 'timestamp') {
+            const timeA = new Date(a.date ? `${a.date} ${a.time || '00:00:00'}` : (a.timestamp || 0)).getTime() || 0;
+            const timeB = new Date(b.date ? `${b.date} ${b.time || '00:00:00'}` : (b.timestamp || 0)).getTime() || 0;
+            return asc ? timeA - timeB : timeB - timeA;
+        } else if (key === 'time') {
+            const tA = String(a.time || '');
+            const tB = String(b.time || '');
+            return asc ? tA.localeCompare(tB) : tB.localeCompare(tA);
+        } else if (key === 'score') {
+            const sA = parseInt(a.score) || 0;
+            const sB = parseInt(b.score) || 0;
+            return asc ? sA - sB : sB - sA;
+        } else if (key === 'from') {
+            const fA = String(a.sender || a.from || '').toLowerCase();
+            const fB = String(b.sender || b.from || '').toLowerCase();
+            return asc ? fA.localeCompare(fB) : fB.localeCompare(fA);
+        } else if (key === 'to') {
+            const toA = String(a.to || a.recipient || a.recips || '').toLowerCase();
+            const toB = String(b.to || b.recipient || b.recips || '').toLowerCase();
+            return asc ? toA.localeCompare(toB) : toB.localeCompare(toA);
+        } else if (key === 'subject') {
+            const subA = String(a.subject || a.details || '').toLowerCase();
+            const subB = String(b.subject || b.details || '').toLowerCase();
+            return asc ? subA.localeCompare(subB) : subB.localeCompare(subA);
+        } else if (key === 'verdict') {
+            const vA = String(a.verdict || '').toLowerCase();
+            const vB = String(b.verdict || '').toLowerCase();
+            return asc ? vA.localeCompare(vB) : vB.localeCompare(vA);
         } else {
-            valA = String(valA).toLowerCase();
-            valB = String(valB).toLowerCase();
+            const valA = String(a[key] || '').toLowerCase();
+            const valB = String(b[key] || '').toLowerCase();
+            return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
-        if (valA < valB) return asc ? -1 : 1;
-        if (valA > valB) return asc ? 1 : -1;
-        return 0;
     });
 
     window.incidentVirtualList.setItems(sorted, shouldReset);
 };
 
 window.selectIncident = async (item) => {
-    window.AppState.selectedId = item.entryId || item.fingerprint;
+    window.AppState.selectedId = item.entryId || item.fingerprint || item.id;
     if (window.incidentVirtualList) {
         window.incidentVirtualList.refreshCurrentSlice();
     }
@@ -322,15 +411,20 @@ window.selectIncident = async (item) => {
     const isQuarantined = verdict.toLowerCase().includes('malicious') || verdict.toLowerCase().includes('spam') || verdict.toLowerCase().includes('quarantin');
     const isSafe = verdict.toLowerCase().includes('safe');
     
-    const safeSubject = window.escapeHtml(item.subject || 'No Subject');
-    const safeSender = window.escapeHtml(item.sender || 'Unknown');
+    const safeSubject = window.escapeHtml(item.subject || item.details || '(No Subject)');
+    const safeSender = window.escapeHtml(item.sender || item.from || 'Unknown');
+    const safeRecipient = window.escapeHtml(item.to || item.recipient || item.recips || 'N/A');
     const safeTier = window.escapeHtml(item.tier || 'Standard Heuristics');
     const safeIp = (!item.ip || item.ip === 'N/A') ? 'Internal Network' : window.escapeHtml(item.ip);
     const safeVerdict = window.escapeHtml(verdict);
     const verdictClass = verdict.toLowerCase().includes('malicious') ? 'badge-malicious' : (verdict.toLowerCase().includes('spam') ? 'badge-spam' : 'badge-safe');
 
     let actionButtons = `
-        <button class="primary" id="btn-open-forensics">Full Forensics</button>
+        <button class="primary" id="btn-open-outlook" title="Open this email directly in native Microsoft Outlook inspector">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            Open in Outlook
+        </button>
+        <button id="btn-open-forensics">Full Forensics</button>
         <button id="btn-vt-scan">VirusTotal Audit</button>
     `;
 
@@ -342,6 +436,16 @@ window.selectIncident = async (item) => {
     }
     actionButtons += `<button class="danger" id="btn-delete">Delete Item</button>`;
 
+    // Format display timestamp
+    let displayTime = '';
+    if (item.date && item.time) {
+        displayTime = `${item.date} ${item.time}`;
+    } else if (item.timestamp) {
+        displayTime = new Date(item.timestamp).toLocaleString();
+    } else {
+        displayTime = 'N/A';
+    }
+
     panel.innerHTML = `
         <div class="detail-header">
             <h2 style="margin: 0; font-size: 1.1rem; font-weight: 500;">${safeSubject}</h2>
@@ -350,7 +454,8 @@ window.selectIncident = async (item) => {
         <div class="detail-content">
             <div class="detail-meta">
                 <label>Sender</label><div style="word-break: break-all;">${safeSender}</div>
-                <label>Received</label><div>${window.escapeHtml(new Date(item.timestamp).toLocaleString())}</div>
+                <label>Recipient</label><div style="word-break: break-all;">${safeRecipient}</div>
+                <label>Received</label><div>${window.escapeHtml(displayTime)}</div>
                 <label>IP Origin</label><div style="font-family: monospace; color: ${!item.ip || item.ip === 'N/A' ? 'var(--muted)' : 'var(--accent)'}">${safeIp}</div>
                 <label>Score</label><div style="font-weight: 700; color: ${item.score < 50 ? 'var(--danger)' : 'var(--ok)'}">${parseInt(item.score) || 0}% Integrity</div>
                 <label>Analysis</label><div style="font-size: 0.75rem; color: var(--muted);">${safeTier}</div>
@@ -363,21 +468,71 @@ window.selectIncident = async (item) => {
     `;
 
     // Bind event handlers securely via JS closures
-    const btnForensics = document.getElementById('btn-open-forensics');
-    if (btnForensics) btnForensics.onclick = () => window.openForensicsModal(item.entryId || item.fingerprint);
-    const btnVt = document.getElementById('btn-vt-scan');
-    if (btnVt) btnVt.onclick = () => window.cloudScanIncident(item.entryId || '');
-    const btnRel = document.getElementById('btn-release');
-    if (btnRel) btnRel.onclick = () => window.releaseIncident(item.entryId || '', item.fingerprint || '');
-    const btnQuar = document.getElementById('btn-quarantine');
-    if (btnQuar) btnQuar.onclick = () => window.quarantineIncident(item.entryId || '', item.fingerprint || '');
-    const btnDel = document.getElementById('btn-delete');
-    if (btnDel) btnDel.onclick = () => window.deleteIncident(item.entryId || '');
+    const btnOpenOutlook = document.getElementById('btn-open-outlook');
+    if (btnOpenOutlook) {
+        btnOpenOutlook.onclick = async () => {
+            btnOpenOutlook.disabled = true;
+            const origContent = btnOpenOutlook.innerHTML;
+            btnOpenOutlook.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> Launching...`;
+            try {
+                const res = await window.securityApi.openEmail({
+                    entryId: item.entryId || item.id,
+                    storeId: item.storeId || ''
+                });
+                if (res && !res.success) {
+                    alert("Could not open in Outlook: " + (res.error || "Item not found in store or Outlook COM unavailable."));
+                }
+            } catch (err) {
+                alert("Error launching email in Outlook: " + err.message);
+            } finally {
+                btnOpenOutlook.disabled = false;
+                btnOpenOutlook.innerHTML = origContent;
+            }
+        };
+    }
 
-    const forensics = await window.securityApi.getForensics(item.entryId || item.fingerprint);
+    const btnForensics = document.getElementById('btn-open-forensics');
+    if (btnForensics) btnForensics.onclick = () => window.openForensicsModal(item.entryId || item.fingerprint || item.id);
+    const btnVt = document.getElementById('btn-vt-scan');
+    if (btnVt) btnVt.onclick = () => window.cloudScanIncident(item.entryId || item.id || '');
+    const btnRel = document.getElementById('btn-release');
+    if (btnRel) btnRel.onclick = () => window.releaseIncident(item.entryId || item.id || '', item.fingerprint || '');
+    const btnQuar = document.getElementById('btn-quarantine');
+    if (btnQuar) btnQuar.onclick = () => window.quarantineIncident(item.entryId || item.id || '', item.fingerprint || '');
+    const btnDel = document.getElementById('btn-delete');
+    if (btnDel) btnDel.onclick = () => window.deleteIncident(item.entryId || item.id || '');
+
+    // Fast offline fallback from item if already attached (e.g. from vault)
     const bodyEl = document.getElementById('detail-body-content');
+    let displayBody = '';
+    if (item.body && item.body !== 'N/A') {
+        displayBody = item.body;
+    }
+    if (displayBody && typeof displayBody === 'string') {
+        const clean = displayBody.trim();
+        if (/^[A-Za-z0-9+/]+={0,2}$/.test(clean) && clean.length % 4 === 0 && !clean.includes(' ')) {
+            try {
+                const dec = atob(clean);
+                if (dec && dec.length > 0) displayBody = dec;
+            } catch {}
+        }
+    }
+
+    if (!displayBody || displayBody === 'N/A' || displayBody === 'Unavailable') {
+        try {
+            const forensics = await window.securityApi.getForensics({
+                entryId: item.entryId || item.id,
+                originalEntryId: item.originalEntryId,
+                fingerprint: item.fingerprint
+            });
+            if (forensics && forensics.body && forensics.body !== 'N/A' && forensics.body !== 'Unavailable') {
+                displayBody = forensics.body;
+            }
+        } catch {}
+    }
+
     if (bodyEl) {
-        bodyEl.textContent = (forensics && forensics.body && forensics.body !== 'N/A') ? forensics.body : "No body content available for this item (Internal/System Message).";
+        bodyEl.textContent = displayBody || "(No message body content)";
     }
 };
 
@@ -408,7 +563,14 @@ window.handleListKeyNavigation = (e) => {
 };
 
 window.openForensicsModal = (id) => {
-    const item = Object.values(window.AppState.stats).flat().find(i => (i.entryId || i.fingerprint) === id);
+    const all = [
+        ...(window.AppState.stats.malicious || []),
+        ...(window.AppState.stats.suspicious || []),
+        ...(window.AppState.stats.spam || []),
+        ...(window.AppState.stats.safe || []),
+        ...((window.incidentVirtualList && window.incidentVirtualList.items) || [])
+    ];
+    const item = all.find(i => (i.entryId || i.fingerprint || i.id) === id);
     if (item) window.openForensics(item);
 };
 
@@ -480,6 +642,75 @@ window.quarantineIncident = async (entryId, fingerprint) => {
     }
 };
 
+let pendingVtScanEntryId = null;
+
+window.openVirusTotalSetupWizard = (entryId) => {
+    pendingVtScanEntryId = entryId;
+    const input = document.getElementById('wizard-vt-key');
+    const status = document.getElementById('wizard-vt-status');
+    if (input) input.value = '';
+    if (status) status.style.display = 'none';
+    openModal('virustotal-setup-modal');
+    setTimeout(() => { if (input) input.focus(); }, 100);
+};
+
+window.closeVirusTotalSetupModal = () => {
+    closeModal('virustotal-setup-modal');
+    pendingVtScanEntryId = null;
+};
+
+window.saveVirusTotalKeyFromWizard = async () => {
+    const input = document.getElementById('wizard-vt-key');
+    const status = document.getElementById('wizard-vt-status');
+    const btn = document.getElementById('wizard-vt-save-btn');
+    const key = input ? input.value.trim() : '';
+
+    if (!key || key.length < 16) {
+        if (status) {
+            status.style.display = 'block';
+            status.style.background = 'rgba(241, 112, 123, 0.15)';
+            status.style.color = 'var(--danger)';
+            status.textContent = 'Please enter a valid VirusTotal API key (64 hex characters).';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+    }
+
+    try {
+        await window.securityApi.setVTKey(key);
+        if (status) {
+            status.style.display = 'block';
+            status.style.background = 'rgba(107, 183, 0, 0.15)';
+            status.style.color = 'var(--ok)';
+            status.textContent = 'Key connected and encrypted! Starting audit...';
+        }
+        window.addLog("VirusTotal API key successfully connected and encrypted via DPAPI.");
+        const targetId = pendingVtScanEntryId;
+        setTimeout(() => {
+            window.closeVirusTotalSetupModal();
+            if (targetId) {
+                window.cloudScanIncident(targetId);
+            }
+        }, 600);
+    } catch (err) {
+        if (status) {
+            status.style.display = 'block';
+            status.style.background = 'rgba(241, 112, 123, 0.15)';
+            status.style.color = 'var(--danger)';
+            status.textContent = 'Error saving API key: ' + err.message;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save Key & Audit';
+        }
+    }
+};
+
 window.cloudScanIncident = async (entryId) => {
     const btn = document.getElementById('btn-vt-scan');
     if (btn) {
@@ -494,8 +725,10 @@ window.cloudScanIncident = async (entryId) => {
         }
         if (res && res.success && res.data) {
             window.showVirusTotalReport(res.data);
+        } else if (res && (res.code === 'NO_API_KEY' || (res.error && res.error.includes('API key')))) {
+            window.openVirusTotalSetupWizard(entryId);
         } else {
-            alert("VirusTotal audit notice: " + ((res && (res.error || (res.data && res.data.error))) || "No threat data available or item not found in database. Check your VirusTotal API key in Settings."));
+            alert("VirusTotal notice: " + ((res && (res.error || (res.data && res.data.error))) || "No threat data available or item not found in database. Check your VirusTotal API key in Settings."));
         }
     } catch (err) {
         if (btn) {
@@ -608,17 +841,17 @@ window.deleteIncident = (id) => {
     });
 };
 
-window.sortOrder = { key: 'timestamp', asc: false };
+window.sortOrder = { key: 'date', asc: false };
 window.sortList = (key) => {
     if (window.sortOrder.key === key) {
         window.sortOrder.asc = !window.sortOrder.asc;
     } else {
         window.sortOrder.key = key;
-        window.sortOrder.asc = true;
+        window.sortOrder.asc = (key === 'score') ? false : (key === 'date' || key === 'time' ? false : true);
     }
 
-    // Update column indicators
-    ['timestamp', 'subject', 'sender', 'verdict'].forEach(col => {
+    // Update column indicators for all 7 granular columns
+    ['date', 'time', 'from', 'to', 'subject', 'verdict', 'score'].forEach(col => {
         const el = document.getElementById(`sort-${col}`);
         if (el) {
             if (col === window.sortOrder.key) {
@@ -629,7 +862,18 @@ window.sortList = (key) => {
         }
     });
 
-    const cat = window.AppState.currentCategory;
-    const items = window.AppState.stats[cat] || [];
-    window.renderList(items, cat, false);
+    if (window.vaultSearchActive && typeof window.executeVaultSearch === 'function') {
+        window.executeVaultSearch();
+    } else {
+        const cat = window.AppState.currentCategory;
+        const items = (cat === 'all')
+            ? [
+                ...(window.AppState.stats.malicious || []),
+                ...(window.AppState.stats.suspicious || []),
+                ...(window.AppState.stats.spam || []),
+                ...(window.AppState.stats.safe || [])
+              ]
+            : (window.AppState.stats[cat] || []);
+        window.renderList(items, cat, false);
+    }
 };

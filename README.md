@@ -131,3 +131,10 @@ Packaged binaries will be output to the `dist\` directory.
 - **Audit Data & Telemetry:** `%APPDATA%\DeskGuard for Microsoft Outlook\data.json` (with `.bak` and `.tmp` atomic swaps)
 - **Application Logs:** `logs\deskguard_outlook.log`
 - **Forensic Snapshots:** `logs\forensics\<sha256>.json` (plain UTF-8 forensic headers and body snapshots)
+
+### Developer Tools
+- **`.\developer_tools\Pull_Code_files.py`**: Condenses and bundles the complete codebase and architecture manifest into <= 10 structured upload files for AI review.
+- **`.\developer_tools\Find_and_Remove_Comments.py`**: Strips comments across `.js`, `.ps1`, `.css`, `.html` while preserving code, validates delimiter syntax, and detects duplicate declarations across CPU worker pools.
+- **`.\developer_tools\native_mapi_poc\`**: Standalone native MAPI Table bulk-querying benchmark and proof-of-concept engine (>1,000 items/sec, <30MB RAM).
+- **`.\docs\ARCHITECTURAL_MIGRATION_ROADMAP.md`**: Formal architectural design specification for migrating from Electron/PowerShell to native compiled sidecar (Rust/C++ + Tauri v2 / WebView2).
+

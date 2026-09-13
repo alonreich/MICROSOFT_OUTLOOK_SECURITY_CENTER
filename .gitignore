@@ -3,7 +3,12 @@ logs/
 dist/
 out/
 release-build/
+bin/
+obj/
 *.exe
 *.msi
 *.zip
 *.7z
+*.pdb
+*.dll
+

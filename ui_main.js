@@ -26,15 +26,41 @@ window.AppState = {
     },
     
     renderDashboard(resetScroll = false) {
-        document.getElementById('stat-malicious').textContent = this.stats.malicious.length;
-        document.getElementById('stat-suspicious').textContent = this.stats.suspicious.length;
-        document.getElementById('stat-spam').textContent = this.stats.spam.length;
-        document.getElementById('stat-safe').textContent = this.stats.safe.length;
+        const totalAll = (this.stats.malicious ? this.stats.malicious.length : 0) +
+                         (this.stats.suspicious ? this.stats.suspicious.length : 0) +
+                         (this.stats.spam ? this.stats.spam.length : 0) +
+                         (this.stats.safe ? this.stats.safe.length : 0);
+
+        const elAll = document.getElementById('stat-all');
+        if (elAll) elAll.textContent = totalAll;
+        document.getElementById('stat-malicious').textContent = this.stats.malicious ? this.stats.malicious.length : 0;
+        document.getElementById('stat-suspicious').textContent = this.stats.suspicious ? this.stats.suspicious.length : 0;
+        document.getElementById('stat-spam').textContent = this.stats.spam ? this.stats.spam.length : 0;
+        document.getElementById('stat-safe').textContent = this.stats.safe ? this.stats.safe.length : 0;
         
-        const list = this.stats[this.currentCategory] || [];
+        if (window.vaultSearchActive && typeof window.executeVaultSearch === 'function') {
+            window.executeVaultSearch();
+            return;
+        }
+
+        let list;
+        let title;
+        if (this.currentCategory === 'all') {
+            list = [
+                ...(this.stats.malicious || []),
+                ...(this.stats.suspicious || []),
+                ...(this.stats.spam || []),
+                ...(this.stats.safe || [])
+            ];
+            title = "All Scanned Emails";
+        } else {
+            list = this.stats[this.currentCategory] || [];
+            title = this.currentCategory.charAt(0).toUpperCase() + this.currentCategory.slice(1) + " Incidents";
+        }
+
         window.renderList(list, this.currentCategory, resetScroll);
-        document.getElementById('current-list-title').textContent = 
-            this.currentCategory.charAt(0).toUpperCase() + this.currentCategory.slice(1) + " Incidents";
+        const titleEl = document.getElementById('current-list-title');
+        if (titleEl) titleEl.textContent = title;
     }
 };
 
@@ -267,9 +293,77 @@ window.winHide = () => api.hideWindow();
 async function init() {
     const stats = await api.getStats();
     window.AppState.updateStats({ full: true, stats: stats });
+    try {
+        const cfg = await api.getConfig();
+        window.AppState.config = cfg;
+        if (cfg && cfg.firstRun !== false) {
+            setTimeout(() => {
+                openModal('first-run-wizard-modal');
+            }, 300);
+        }
+    } catch (e) {}
 }
 
+window.useRecommendedSettings = async function() {
+    try {
+        const recommendedRubrics = {
+            weights: { dmarc: 13, alignment: 10, dkim: 7, spf: 25, rdns: 15, body: 10, heuristics: 10, rbl: 10 },
+            toggles: { dmarc: true, alignment: true, dkim: true, spf: true, rdns: true, body: true, heuristics: true, rbl: true },
+            spamThresholdPercent: 50
+        };
+        await api.setRubrics(recommendedRubrics);
+        await api.setThreatIntelLevel(1);
+        await api.setFirstRun(false);
+        closeModal('first-run-wizard-modal');
+        window.showNotification('Recommended protection activated: 8-engine security & zero-API threat intelligence enabled.');
+        addLog('First-time setup completed: Recommended security policy applied.');
+    } catch (err) {
+        console.error('Wizard error:', err);
+        closeModal('first-run-wizard-modal');
+    }
+};
+
+window.customizeWizardSettings = async function() {
+    try {
+        await api.setFirstRun(false);
+        closeModal('first-run-wizard-modal');
+        setTimeout(() => {
+            if (window.SecurityUI && window.SecurityUI.Engines && window.SecurityUI.Engines.open) {
+                window.SecurityUI.Engines.open();
+            } else {
+                openSettings();
+            }
+        }, 350);
+    } catch (err) {
+        closeModal('first-run-wizard-modal');
+    }
+};
+
+window.showNotification = function(msg, isError = false) {
+    if (typeof window.addLog === 'function') {
+        window.addLog(msg);
+    }
+    let toast = document.getElementById('app-notification-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'app-notification-toast';
+        toast.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:99999; padding:12px 20px; border-radius:8px; font-size:0.85rem; font-weight:600; color:#fff; box-shadow:0 8px 24px rgba(0,0,0,0.5); transition:all 0.3s ease; pointer-events:none; opacity:0; transform:translateY(10px);';
+        document.body.appendChild(toast);
+    }
+    toast.style.background = isError ? 'var(--danger, #d83b01)' : 'var(--accent, #0078d4)';
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+    }, 3500);
+};
+
 // Attach to globals for HTML usage
+window.openModal = openModal;
+window.closeModal = closeModal;
 window.switchTab = switchTab;
 window.switchCategory = switchCategory;
 window.openSettings = openSettings;
@@ -299,3 +393,126 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// --- OFFLINE VAULT SEARCH & AUTOCOMPLETE TOOLBAR ---
+window.vaultSearchActive = false;
+let vaultSearchDebounceTimer = null;
+let senderSuggestDebounceTimer = null;
+
+window.executeVaultSearch = async function() {
+    const searchInput = document.getElementById('vault-search-input');
+    const fromInput = document.getElementById('vault-from-input');
+    const scopeSelect = document.getElementById('vault-search-scope');
+    const clearBtn = document.getElementById('vault-search-clear');
+
+    const query = searchInput ? searchInput.value.trim() : '';
+    const fromFilter = fromInput ? fromInput.value.trim() : '';
+    const scope = scopeSelect ? scopeSelect.value : 'all';
+    const category = window.AppState.currentCategory;
+
+    const hasQuery = query.length > 0 || fromFilter.length > 0;
+    if (clearBtn) clearBtn.style.display = hasQuery ? 'inline-block' : 'none';
+
+    if (!hasQuery) {
+        if (window.vaultSearchActive) {
+            window.vaultSearchActive = false;
+            window.AppState.renderDashboard(false);
+        }
+        return;
+    }
+
+    window.vaultSearchActive = true;
+
+    try {
+        const sortBy = window.sortOrder ? window.sortOrder.key : 'date';
+        const sortOrder = (window.sortOrder && window.sortOrder.asc) ? 'asc' : 'desc';
+
+        const res = await api.searchVault({
+            query,
+            scope,
+            category,
+            fromFilter,
+            sortBy,
+            sortOrder,
+            limit: 500
+        });
+
+        if (res && res.ok && res.results) {
+            const rows = res.results.rows || [];
+            window.renderList(rows, category, false);
+            const titleEl = document.getElementById('current-list-title');
+            if (titleEl) {
+                titleEl.textContent = `Vault Search (${res.results.total} matching)`;
+            }
+        }
+    } catch (err) {
+        console.error('[Vault Search Error]:', err);
+    }
+};
+
+window.clearVaultSearch = function() {
+    const searchInput = document.getElementById('vault-search-input');
+    const fromInput = document.getElementById('vault-from-input');
+    const clearBtn = document.getElementById('vault-search-clear');
+    if (searchInput) searchInput.value = '';
+    if (fromInput) fromInput.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    window.vaultSearchActive = false;
+    window.AppState.renderDashboard(true);
+};
+
+function initVaultSearchToolbar() {
+    const searchInput = document.getElementById('vault-search-input');
+    const fromInput = document.getElementById('vault-from-input');
+    const scopeSelect = document.getElementById('vault-search-scope');
+    const datalist = document.getElementById('from-suggestions');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(vaultSearchDebounceTimer);
+            vaultSearchDebounceTimer = setTimeout(() => {
+                window.executeVaultSearch();
+            }, 250);
+        });
+    }
+
+    if (scopeSelect) {
+        scopeSelect.addEventListener('change', () => {
+            if (window.vaultSearchActive || (searchInput && searchInput.value.trim())) {
+                window.executeVaultSearch();
+            }
+        });
+    }
+
+    if (fromInput) {
+        fromInput.addEventListener('input', () => {
+            const val = fromInput.value.trim();
+            // Autocomplete suggestions
+            clearTimeout(senderSuggestDebounceTimer);
+            senderSuggestDebounceTimer = setTimeout(async () => {
+                if (val.length >= 1 && datalist) {
+                    try {
+                        const res = await api.getSenderSuggestions(val);
+                        if (res && res.ok && Array.isArray(res.suggestions)) {
+                            datalist.innerHTML = res.suggestions
+                                .map(s => `<option value="${window.escapeHtml(s)}"></option>`)
+                                .join('');
+                        }
+                    } catch (e) {}
+                }
+            }, 150);
+
+            // Execute search filter
+            clearTimeout(vaultSearchDebounceTimer);
+            vaultSearchDebounceTimer = setTimeout(() => {
+                window.executeVaultSearch();
+            }, 250);
+        });
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVaultSearchToolbar);
+} else {
+    initVaultSearchToolbar();
+}

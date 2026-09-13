@@ -40,6 +40,11 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A7,7 0 1,1 19,12A7,7 0 0,1 12,19M12,3A9,9 0 0,0 3,12V21H12A9,9 0 0,0 21,12A9,9 0 0,0 12,3Z"/></svg>
                 Duplicate Finder
             </div>
+            <div class="nav-item" id="nav-engines" onclick="SecurityUI.Engines.open()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,7.3 16,7.9V11C16,14.75 14.3,18.25 11.5,20.5L12,20.9L12.5,20.5C9.7,18.25 8,14.75 8,11V7.9C9.2,7.3 10.6,7 12,7Z"/></svg>
+                Engines & Weights
+            </div>
+            <button id="sensitivity-btn" style="display:none;"></button>
             <div style="flex: 1;"></div>
             <div class="nav-item" data-tab="settings" onclick="openSettings()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.35 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.35 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.95C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.95L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg>
@@ -58,6 +63,10 @@
 
                 <div class="dashboard-layout">
                     <div class="stats-grid">
+                        <div class="stat-card" onclick="switchCategory('all')" id="card-all">
+                            <div class="stat-label">All Scanned</div>
+                            <div id="stat-all" class="stat-value" style="color: var(--accent);">0</div>
+                        </div>
                         <div class="stat-card active" onclick="switchCategory('malicious')" id="card-malicious">
                             <div class="stat-label">Blocked Threats</div>
                             <div id="stat-malicious" class="stat-value" style="color: var(--danger);">0</div>
@@ -92,11 +101,35 @@
                                     </button>
                                 </div>
                             </div>
+                            <!-- OFFLINE SEARCH & AUTOCOMPLETE TOOLBAR -->
+                            <div class="vault-search-toolbar" style="display: flex; gap: 10px; align-items: center; padding: 8px 24px; background: var(--surface-low); border-bottom: 1px solid var(--border); flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <label for="vault-search-scope" style="font-size: 0.7rem; text-transform: uppercase; color: var(--muted); font-weight: 700; margin: 0;">Scope:</label>
+                                    <select id="vault-search-scope" style="font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; background: var(--surface-mid); color: var(--text); border: 1px solid var(--border);">
+                                        <option value="all">All Fields</option>
+                                        <option value="attachments">Attachments Only</option>
+                                        <option value="body">Body Only</option>
+                                        <option value="subject">Subject Only</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; position: relative;">
+                                    <label for="vault-from-input" style="font-size: 0.7rem; text-transform: uppercase; color: var(--muted); font-weight: 700; margin: 0;">From:</label>
+                                    <input type="text" id="vault-from-input" list="from-suggestions" placeholder="Type to filter..." style="font-size: 0.75rem; padding: 4px 8px; width: 140px; border-radius: 4px; background: var(--surface-mid); color: var(--text); border: 1px solid var(--border);" autocomplete="off" />
+                                    <datalist id="from-suggestions"></datalist>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 180px;">
+                                    <input type="text" id="vault-search-input" placeholder="Search wildcard (*test*, phishing)..." style="font-size: 0.75rem; padding: 4px 8px; width: 100%; border-radius: 4px; background: var(--surface-mid); color: var(--text); border: 1px solid var(--border);" autocomplete="off" />
+                                    <button id="vault-search-clear" onclick="window.clearVaultSearch()" style="display: none; font-size: 0.75rem; padding: 4px 8px; background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer;" title="Clear Search">&times;</button>
+                                </div>
+                            </div>
                             <div id="list-header" class="list-header incident-grid">
-                                <div onclick="window.sortList('timestamp')">Timestamp <span id="sort-timestamp">▼</span></div>
+                                <div onclick="window.sortList('date')">Date <span id="sort-date">▼</span></div>
+                                <div onclick="window.sortList('time')">Time <span id="sort-time"></span></div>
+                                <div onclick="window.sortList('from')">From <span id="sort-from"></span></div>
+                                <div onclick="window.sortList('to')">To <span id="sort-to"></span></div>
                                 <div onclick="window.sortList('subject')">Subject <span id="sort-subject"></span></div>
-                                <div onclick="window.sortList('sender')">Sender <span id="sort-sender"></span></div>
                                 <div onclick="window.sortList('verdict')">Verdict <span id="sort-verdict"></span></div>
+                                <div onclick="window.sortList('score')">Score <span id="sort-score"></span></div>
                             </div>
                             <div id="security-list" class="list-container" tabindex="0">
                                 <!-- Virtualized items injected here -->
@@ -214,7 +247,149 @@
         </div>
     </div>
 
+    <div id="virustotal-setup-modal" class="modal-overlay" onclick="handleOverlayClick(event, 'virustotal-setup-modal')">
+        <div class="modal" style="width: 580px;">
+            <div class="modal-header">
+                <h2 style="margin: 0; font-weight: 400; font-size: 1.1rem; color: var(--accent);">Connect VirusTotal API</h2>
+                <button onclick="closeVirusTotalSetupModal()" style="background: transparent; border: none; font-size: 1.5rem; color: var(--muted); padding: 0; width: 32px; height: 32px; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 24px;">
+                <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px;">
+                    <div style="background: rgba(0, 120, 212, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; color: var(--text);">VirusTotal Threat Intelligence Not Connected</div>
+                        <div style="font-size: 0.8rem; color: var(--muted); line-height: 1.5;">
+                            To run live multi-engine virus scans across 70+ antivirus vendors, DeskGuard requires your free VirusTotal API key.
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label for="wizard-vt-key">Paste VirusTotal API Key</label>
+                    <input type="password" id="wizard-vt-key" placeholder="Enter your 64-character API key..." autocomplete="off">
+                </div>
+                <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 20px; line-height: 1.4;">
+                    Don't have an API key? You can get a free one in seconds:
+                    <a href="https://www.virustotal.com/gui/my-apikey" target="_blank" style="color: var(--accent); text-decoration: underline; margin-left: 4px;">Get Free VirusTotal API Key &rarr;</a>
+                </div>
+                <div id="wizard-vt-status" style="display: none; font-size: 0.8rem; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="openSettings(); closeVirusTotalSetupModal();">Go to Settings</button>
+                <button onclick="closeVirusTotalSetupModal()">Cancel</button>
+                <button id="wizard-vt-save-btn" class="primary" onclick="saveVirusTotalKeyFromWizard()">Save Key & Audit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SENSITIVITY & ANTI-SPAM ENGINES MODAL -->
+    <div id="sensitivity-modal" class="modal-overlay" onclick="handleOverlayClick(event, 'sensitivity-modal')">
+        <div class="modal" style="width: 700px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2 style="margin: 0; font-weight: 400; font-size: 1.1rem; color: var(--accent);">Anti-Spam Engines & Sensitivity Tuning</h2>
+                <button id="close-sensitivity" style="background: transparent; border: none; font-size: 1.5rem; color: var(--muted); padding: 0; width: 32px; height: 32px; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 20px;">
+                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 16px; line-height: 1.5;">
+                    Toggle individual detection engines and adjust their relative percentage weights. Active engine weights automatically rebalance to 100%. Hover over any engine row for details.
+                </div>
+                <div id="sensitivity-container" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;"></div>
+                <div style="padding: 16px; border-top: 1px solid var(--border); background: var(--surface-low); border-radius: 8px;">
+                    <div style="text-align: center; margin-bottom: 10px;">
+                        <div style="color: var(--accent); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.5px;">SPAM VERDICT AGGRESSIVENESS THRESHOLD</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: var(--ok);">RELAXED (1%)</div>
+                        <input type="range" id="verdict-threshold-slider" min="1" max="99" value="50" style="flex: 1; cursor: pointer;">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: var(--danger);">STRICT (99%)</div>
+                    </div>
+                    <div style="text-align: center; margin-top: 10px;">
+                        <span id="verdict-threshold-val" style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: var(--accent);">50%</span>
+                        <div id="verdict-description" style="font-size: 0.72rem; color: var(--muted); margin-top: 4px;">Emails scoring 50% or lower will be marked as SPAM.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="reset-sensitivity-defaults" style="margin-right: auto;">Reset Factory Defaults</button>
+                <button id="cancel-sensitivity">Cancel</button>
+                <button id="save-sensitivity" class="primary">Apply Weights & Threshold</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIRST-TIME SETUP WIZARD MODAL -->
+    <div id="first-run-wizard-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="width: 720px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: linear-gradient(135deg, rgba(0,120,212,0.15) 0%, rgba(20,22,30,0.95) 100%);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="background: var(--accent); color: #fff; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,7.3 16,7.9V11C16,14.75 14.3,18.25 11.5,20.5L12,20.9L12.5,20.5C9.7,18.25 8,14.75 8,11V7.9C9.2,7.3 10.6,7 12,7Z"/></svg>
+                    </div>
+                    <div>
+                        <h2 style="margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--text);">Welcome to DeskGuard for Microsoft Outlook</h2>
+                        <div style="font-size: 0.75rem; color: var(--muted); margin-top: 2px;">Multi-Tier Anti-Spam, Anti-Phishing & Malware Protection Suite</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 24px; overflow-y: auto;">
+                <div style="background: var(--surface-low); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 20px;">
+                    <div style="font-weight: 600; font-size: 0.95rem; color: var(--text); margin-bottom: 8px;">8-Engine Defensive Architecture</div>
+                    <div style="font-size: 0.8rem; color: var(--muted); line-height: 1.6;">
+                        DeskGuard continuously inspects inbound and historical Outlook messages across 8 specialized verification layers:
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; font-size: 0.78rem;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> DMARC Authentication (13%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> Sender Envelope Alignment (10%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> DKIM Cryptographic Seals (7%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> SPF Mail Route Authorization (25%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> Reverse DNS / PTR Verification (15%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> Anti-Phishing Body Entropy Shield (10%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> Smart Scam & Heuristic Engine (10%)
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color: var(--ok); font-weight:bold;">✔</span> 3-Provider RBL Blacklists (10%)
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(0, 120, 212, 0.08); border: 1px solid rgba(0, 120, 212, 0.3); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
+                    <div style="font-weight: 600; font-size: 0.88rem; color: var(--accent); margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                        Zero-API Threat Intelligence Included
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--muted); line-height: 1.5;">
+                        The built-in Team Cymru Malware Hash Database queries operate over DNS without requiring any API keys or account registrations. You are fully protected out of the box. Optional VirusTotal API keys can be configured later in Settings for custom multi-vendor cloud audits.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;">
+                <button onclick="window.customizeWizardSettings()" style="background: transparent; border: 1px solid var(--border);">Customize Engines & Settings</button>
+                <button onclick="window.useRecommendedSettings()" class="primary" style="padding: 10px 24px; font-weight: 600; font-size: 0.9rem;">
+                    Use Recommended Settings (No API Required) &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOOLTIP OVERLAY -->
+    <div id="tooltip" style="display:none; position:fixed; z-index:99999; background: #18191f; border: 1px solid var(--accent); color: #fff; padding: 14px 18px; border-radius: 8px; font-size: 0.78rem; max-width: 360px; line-height: 1.5; white-space: pre-wrap; box-shadow: 0 12px 32px rgba(0,0,0,0.8); pointer-events: none;"></div>
+
     <script src="ui_list.js"></script>
+    <script src="ui_engines.js"></script>
     <script src="ui_settings.js"></script>
     <script src="ui_forensics.js"></script>
     <script src="ui_duplicates.js"></script>

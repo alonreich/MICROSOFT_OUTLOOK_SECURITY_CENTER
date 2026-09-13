@@ -15,6 +15,12 @@ const FORENSICS_DIR = path.join(LOG_DIR, 'forensics');
 const LOG_FILE = path.join(LOG_DIR, 'deskguard_outlook.log');
 
 const USER_DATA = app.getPath('userData');
+const vaultDB = require('./vault_db');
+try {
+    vaultDB.init(USER_DATA);
+} catch (err) {
+    console.error('Failed to initialize DeskGuard Vault DB:', err.message);
+}
 const PIPE_NAME = `\\\\.\\pipe\\mos_service_${crypto.createHash('sha256').update(USER_DATA).digest('hex').slice(0, 12)}`;
 const PIPE_AUTH_TOKEN = `MOS_AUTH_${crypto.createHash('sha256').update(USER_DATA).digest('hex').slice(0, 16)}`;
 
@@ -73,6 +79,44 @@ function applyWindowsStartupSetting(enabled) {
     }
 }
 
+function killProcessTree(child) {
+    if (!child) return;
+    const pid = child.pid;
+    try { child.removeAllListeners('exit'); } catch {}
+    if (pid) {
+        try {
+            const { execSync } = require('node:child_process');
+            execSync(`taskkill /pid ${pid} /T /F 2>nul`);
+        } catch {}
+    }
+    try { if (!child.killed) child.kill('SIGKILL'); } catch {}
+}
+
+function ensureOutlookProgrammaticAccessPolicies() {
+    const versions = ['16.0', '15.0', '14.0'];
+    const settings = [
+        ['PromptOOMSend', '2'],
+        ['PromptOOMAddressBookAccess', '2'],
+        ['PromptOOMAddressInformationAccess', '2'],
+        ['PromptOOMSaveAs', '2'],
+        ['AdminSecurityMode', '3']
+    ];
+
+    versions.forEach(v => {
+        const paths = [
+            `HKCU\\Software\\Microsoft\\Office\\${v}\\Outlook\\Security`,
+            `HKCU\\Software\\Policies\\Microsoft\\Office\\${v}\\Outlook\\Security`
+        ];
+        paths.forEach(p => {
+            settings.forEach(([name, val]) => {
+                try {
+                    execFile('reg', ['add', p, '/v', name, '/t', 'REG_DWORD', '/d', val, '/f'], () => {});
+                } catch {}
+            });
+        });
+    });
+}
+
 [LOG_DIR, FORENSICS_DIR].forEach(d => { if (!fs.existsSync(d)) try { fs.mkdirSync(d, { recursive: true }); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } } });
 if (!fs.existsSync(LOG_FILE)) try { fs.writeFileSync(LOG_FILE, `[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '')}] DeskGuard: Initialization Success. Monitoring is active.\n`); } catch (err) { if(err && err.message) { console.error(err); logToFile("Handled Exception: " + err.message, "ERROR"); } }
 
@@ -96,6 +140,7 @@ const Store = require('electron-store');
 
 const DEFAULT_CONFIG = { 
     enabled: true, 
+    firstRun: true,
     vtApiKey: '', 
     spamKeywords: ['viagra', 'lottery', 'urgent', 'bitcoin', 'winner', 'unpaid', 'invoice', 'payment', 'account', 'verify', 'security', 'update', 'action', 'urgent-action', 'account-compromise', 'limited-access', 'security-alert', 'suspicious-activity'], 
     rubrics: { 
@@ -108,6 +153,9 @@ const DEFAULT_CONFIG = {
     launchAtStartup: true,
     scanningSpeed: 50,
     historyScanEnabled: true,
+    onAccessEnabled: true,
+    onDemandLimit: 1000,
+    deepHistoryScanEnabled: false,
     threatIntelligenceLevel: 1
 };
 
@@ -221,11 +269,9 @@ function createStoreInstance(storeName, defaultObj) {
 }
 
 let configStore = null;
-let dataStore = null;
 
 if (isServiceMode) {
     configStore = createStoreInstance('config', DEFAULT_CONFIG);
-    dataStore = createStoreInstance('data', DEFAULT_DATA);
 }
 
 class AsyncWriteQueue {
@@ -283,78 +329,85 @@ async function serviceSetStore(key, value) {
                 processedIdsCache.clear();
                 value.slice(-MAX_PROCESSED_IDS).forEach(id => processedIdsCache.add(id));
                 uncommittedProcessedIdsCount = processedIdsCache.size;
+                isPersistenceDirty = true;
                 scheduleStatePersistenceFlush(true);
             }
             return;
         }
         if (key === 'stats') {
             statsCache = value;
+            isPersistenceDirty = true;
             scheduleStatePersistenceFlush(true);
             return;
         }
+        if (key === 'releasedFingerprints') {
+            if (Array.isArray(value)) {
+                value.forEach(fp => { if (fp) releasedFingerprintsCache.add(fp); });
+            } else if (typeof value === 'string' && value) {
+                releasedFingerprintsCache.add(value);
+            }
+            while (releasedFingerprintsCache.size > 5000) {
+                const oldest = releasedFingerprintsCache.values().next().value;
+                if (oldest === undefined) break;
+                releasedFingerprintsCache.delete(oldest);
+            }
+            isPersistenceDirty = true;
+            scheduleStatePersistenceFlush(false);
+            return;
+        }
 
-        const isDataStoreKey = ['stats', 'processedIds', 'releasedFingerprints'].includes(key);
-        const targetStore = isDataStoreKey ? dataStore : configStore;
-        const storeName = isDataStoreKey ? 'data' : 'config';
-
-        if (!targetStore) {
-            logToFile(`[Storage Error] Attempted write to uninitialized store: ${storeName}`, 'ERROR');
+        if (!configStore) {
+            logToFile(`[Storage Error] Attempted write to uninitialized configStore: ${key}`, 'ERROR');
             return;
         }
 
         try {
-            backupStoreBeforeWrite(storeName);
-            targetStore.set(key, value);
+            backupStoreBeforeWrite('config');
+            configStore.set(key, value);
         } catch (err) {
-            const errMsg = `Disk write exception for ${storeName} [${key}]: ${err.message}`;
+            const errMsg = `Disk write exception for config [${key}]: ${err.message}`;
             logToFile(errMsg, 'ERROR');
             broadcastToUi({
                 type: 'storage-error',
-                store: storeName,
+                store: 'config',
                 key,
                 error: err.message
             });
             return;
         }
 
-        if (isDataStoreKey) {
-            if (key === 'stats') {
-                broadcastToUi({ type: 'stats-update', data: { full: true, stats: targetStore.get('stats') } });
-            }
-        } else {
-            broadcastToUi({
-                type: 'status-sync',
-                enabled: !!configStore.get('enabled'),
-                stats: dataStore ? dataStore.get('stats') : null,
-                config: configStore.store
-            });
+        broadcastToUi({
+            type: 'status-sync',
+            enabled: !!configStore.get('enabled'),
+            stats: statsCache,
+            config: configStore.store
+        });
 
-            if (key === 'enabled' || key === 'historyScanEnabled') {
-                if (configStore.get('enabled')) {
-                    requestScannerRestart(key);
-                } else {
-                    if (standbyWatcherTimer) {
-                        clearInterval(standbyWatcherTimer);
-                        standbyWatcherTimer = null;
-                    }
-                    if (currentScanChild) {
-                        currentScanChild.removeAllListeners('exit');
-                        currentScanChild.kill('SIGKILL');
-                        isScanning = false;
-                    }
-                    broadcastToUi({ type: 'outlook-status', running: false, standby: false });
-                }
-            } else if (key === 'launchAtStartup') {
-                applyWindowsStartupSetting(!!value);
-            } else if (key === 'scanningSpeed') {
-                if (currentScanChild) {
-                    try {
-                        currentScanChild.stdin.write(JSON.stringify({ type: 'config-update', scanningSpeed: value }) + '\n');
-                    } catch (e) {}
-                }
-            } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey'].includes(key)) {
+        if (key === 'enabled' || key === 'historyScanEnabled') {
+            if (configStore.get('enabled')) {
                 requestScannerRestart(key);
+            } else {
+                if (standbyWatcherTimer) {
+                    clearInterval(standbyWatcherTimer);
+                    standbyWatcherTimer = null;
+                }
+                if (currentScanChild) {
+                    killProcessTree(currentScanChild);
+                    currentScanChild = null;
+                    isScanning = false;
+                }
+                broadcastToUi({ type: 'outlook-status', running: false, standby: false });
             }
+        } else if (key === 'launchAtStartup') {
+            applyWindowsStartupSetting(!!value);
+        } else if (key === 'scanningSpeed') {
+            if (currentScanChild) {
+                try {
+                    currentScanChild.stdin.write(JSON.stringify({ type: 'config-update', scanningSpeed: value }) + '\n');
+                } catch (e) {}
+            }
+        } else if (['rubrics', 'spamKeywords', 'whitelist', 'blacklist', 'vtApiKey'].includes(key)) {
+            requestScannerRestart(key);
         }
     });
 }
@@ -473,7 +526,9 @@ function broadcastToUi(msg) {
 
 // IN-MEMORY STATE PERSISTENCE & TELEMETRY INGESTION ENGINE
 const processedIdsCache = new Set();
+const releasedFingerprintsCache = new Set();
 let uncommittedProcessedIdsCount = 0;
+let isPersistenceDirty = false;
 let flushTimer = null;
 let isFlushInProgress = false;
 let flushPending = false;
@@ -481,18 +536,58 @@ let flushRetryCount = 0;
 const FLUSH_INTERVAL_MS = 5000;
 const MAX_UNCOMMITTED_ITEMS = 500;
 
-if (isServiceMode && dataStore) {
-    try {
-        const storedIds = dataStore.get('processedIds');
-        if (Array.isArray(storedIds)) {
-            storedIds.forEach(id => processedIdsCache.add(id));
+if (isServiceMode) {
+    const dataPath = path.join(USER_DATA, 'data.json');
+    const bakPath = path.join(USER_DATA, 'data.json.bak');
+    let rawData = null;
+    let loadedFromBak = false;
+
+    if (fs.existsSync(dataPath)) {
+        try {
+            const content = fs.readFileSync(dataPath, 'utf8');
+            if (content && content.trim().length > 0) {
+                rawData = JSON.parse(content);
+            }
+        } catch (err) {
+            logToFile(`[State Persistence] Warning: data.json read error (${err.message}), falling back to backup.`, 'WARN');
         }
-        const storedStats = dataStore.get('stats');
-        if (storedStats) statsCache = storedStats;
-        logToFile(`[State Persistence] Initialized in-memory cache with ${processedIdsCache.size} processed IDs.`);
-    } catch (err) {
-        logToFile(`[State Persistence Error] Cache initialization failed: ${err.message}`, 'WARN');
     }
+
+    if (!rawData && fs.existsSync(bakPath)) {
+        try {
+            const bakContent = fs.readFileSync(bakPath, 'utf8');
+            if (bakContent && bakContent.trim().length > 0) {
+                rawData = JSON.parse(bakContent);
+                loadedFromBak = true;
+                logToFile(`[State Persistence] Successfully restored state from data.json.bak.`, 'INFO');
+            }
+        } catch (err) {
+            logToFile(`[State Persistence Error] data.json.bak read error: ${err.message}`, 'ERROR');
+        }
+    }
+
+    const initialData = rawData || DEFAULT_DATA;
+    if (Array.isArray(initialData.processedIds)) {
+        initialData.processedIds.forEach(id => processedIdsCache.add(id));
+    }
+    if (Array.isArray(initialData.releasedFingerprints)) {
+        initialData.releasedFingerprints.forEach(fp => releasedFingerprintsCache.add(fp));
+    }
+    if (initialData.stats && typeof initialData.stats === 'object') {
+        statsCache = initialData.stats;
+        for (const cat of ['malicious', 'suspicious', 'spam', 'safe']) {
+            if (Array.isArray(statsCache[cat])) {
+                statsCache[cat].forEach(item => {
+                    if (!item.subject && item.details) item.subject = item.details;
+                    if (!item.details && item.subject) item.details = item.subject;
+                });
+            }
+        }
+    } else {
+        statsCache = { ...DEFAULT_DATA.stats };
+    }
+
+    logToFile(`[State Persistence] Initialized state from ${loadedFromBak ? 'backup' : (rawData ? 'data.json' : 'defaults')}: ${processedIdsCache.size} processed IDs, ${releasedFingerprintsCache.size} released fingerprints.`);
 }
 
 function addProcessedId(fid) {
@@ -501,6 +596,7 @@ function addProcessedId(fid) {
 
     processedIdsCache.add(fid);
     uncommittedProcessedIdsCount++;
+    isPersistenceDirty = true;
 
     while (processedIdsCache.size > MAX_PROCESSED_IDS) {
         const oldest = processedIdsCache.values().next().value;
@@ -546,7 +642,7 @@ async function flushStatePersistence() {
     const hasStatsData = Object.values(statsBuffer).some(a => a.length > 0);
     const hasIdsData = uncommittedProcessedIdsCount > 0;
 
-    if (!hasStatsData && !hasIdsData) return;
+    if (!hasStatsData && !hasIdsData && !isPersistenceDirty) return;
 
     if (isFlushInProgress) {
         flushPending = true;
@@ -596,8 +692,8 @@ async function flushStatePersistence() {
 
         const fullPayload = {
             processedIds: Array.from(processedIdsCache),
-            releasedFingerprints: (dataStore && dataStore.get('releasedFingerprints')) || [],
-            stats: currentStats
+            releasedFingerprints: Array.from(releasedFingerprintsCache),
+            stats: statsCache
         };
 
         const jsonString = JSON.stringify(fullPayload, null, 2);
@@ -614,6 +710,7 @@ async function flushStatePersistence() {
         await fsPromises.rename(tmpPath, dataPath);
 
         uncommittedProcessedIdsCount = 0;
+        isPersistenceDirty = false;
         flushRetryCount = 0;
 
         if (statsUpdated) {
@@ -669,7 +766,7 @@ function flushStatePersistenceSync() {
 
         const fullPayload = {
             processedIds: Array.from(processedIdsCache),
-            releasedFingerprints: (dataStore && dataStore.get('releasedFingerprints')) || [],
+            releasedFingerprints: Array.from(releasedFingerprintsCache),
             stats: currentStats
         };
 
@@ -680,6 +777,7 @@ function flushStatePersistenceSync() {
         }
         fs.renameSync(tmpPath, dataPath);
         uncommittedProcessedIdsCount = 0;
+        isPersistenceDirty = false;
         logToFile('[State Persistence] Clean shutdown flush completed.', 'INFO');
     } catch (err) {
         logToFile(`[State Persistence Error] Shutdown flush failed: ${err.message}`, 'ERROR');
@@ -688,7 +786,7 @@ function flushStatePersistenceSync() {
 
 async function cleanupForensics() {
     try {
-        const stats = (dataStore && dataStore.get('stats')) || { malicious: [], suspicious: [], spam: [], safe: [] };
+        const stats = statsCache || { malicious: [], suspicious: [], spam: [], safe: [] };
         const activeFingerprints = new Set();
         const cats = ['malicious', 'suspicious', 'spam', 'safe'];
         cats.forEach(cat => {
@@ -709,7 +807,7 @@ async function cleanupForensics() {
 }
 
 function getPsWorker() {
-    if (psWorker && !psWorker.killed) return psWorker;
+    if (psWorker && !psWorker.killed && psWorker.exitCode === null) return psWorker;
     logToFile('Spawning Security Engine Worker process...');
     psWorker = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(APP_ROOT, 'outlook-scanner.ps1'), '-Mode', 'Worker', '-ParentPid', process.pid.toString()], { windowsHide: true });
     const parser = new SafeIPCParser(p => {
@@ -723,9 +821,10 @@ function getPsWorker() {
                     return;
                 }
                 if (p.type === 'store-update') {
-                    if (p.key === 'releasedFingerprints') {
-                        const current = (dataStore && dataStore.get('releasedFingerprints')) || [];
-                        if (!current.includes(p.value)) serviceSetStore('releasedFingerprints', [...current, p.value].slice(-5000));
+                    if (p.key === 'releasedFingerprints' && p.value) {
+                        if (!releasedFingerprintsCache.has(p.value)) {
+                            serviceSetStore('releasedFingerprints', p.value);
+                        }
                     }
                     return;
                 }
@@ -866,15 +965,22 @@ async function runOutlookScanner() {
 
     isScanning = true;
     lastHeartbeat = Date.now();
-    if (watchdogTimer) clearInterval(watchdogTimer);
+    if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+        watchdogTimer = null;
+    }
     watchdogTimer = setInterval(async () => { 
         const idleTime = Date.now() - lastHeartbeat;
-        if (idleTime > 30000) { 
+        if (idleTime > 90000) { 
             logToFile(`Watchdog: Security Engine unresponsive for ${Math.round(idleTime/1000)}s. Attempting graceful recovery...`, 'WARN'); 
             broadcastToUi({ type: 'outlook-status', running: false, standby: false });
+            if (watchdogTimer) {
+                clearInterval(watchdogTimer);
+                watchdogTimer = null;
+            }
             if (currentScanChild) {
-                currentScanChild.removeAllListeners('exit');
-                currentScanChild.kill('SIGKILL'); 
+                killProcessTree(currentScanChild);
+                currentScanChild = null;
             }
             isScanning = false; 
             const stillRunning = await ensureOutlookRunning();
@@ -887,7 +993,7 @@ async function runOutlookScanner() {
         } else {
             broadcastToUi({ type: 'outlook-status', running: true, standby: false });
         }
-    }, 5000);
+    }, 10000);
 
     logToFile('Spawning Security Engine process...');
     currentScanChild = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(APP_ROOT, 'outlook-scanner.ps1'), '-ParentPid', process.pid.toString()], { windowsHide: true });
@@ -903,13 +1009,16 @@ async function runOutlookScanner() {
         mode: scanMode,
         scanningSpeed: configStore.get('scanningSpeed'),
         processedIds: Array.from(processedIdsCache), 
-        releasedFingerprints: dataStore.get('releasedFingerprints'),
+        releasedFingerprints: Array.from(releasedFingerprintsCache),
         spamKeywords: configStore.get('spamKeywords'), 
         rubrics: configStore.get('rubrics'), 
         whitelist: configStore.get('whitelist'), 
         blacklist: configStore.get('blacklist'), 
         vtKey: vtKeyDec,
-        threatIntelligenceLevel: configStore.get('threatIntelligenceLevel')
+        threatIntelligenceLevel: configStore.get('threatIntelligenceLevel'),
+        onAccessEnabled: configStore.get('onAccessEnabled') !== false,
+        onDemandLimit: configStore.get('onDemandLimit') || 1000,
+        deepHistoryScanEnabled: !!configStore.get('deepHistoryScanEnabled')
     }) + '\n');
 
     const parser = new SafeIPCParser(p => { 
@@ -920,19 +1029,45 @@ async function runOutlookScanner() {
                     return; 
                 }
                 if (p.type === 'store-update') {
-                    if (p.key === 'releasedFingerprints') {
-                        const current = (dataStore && dataStore.get('releasedFingerprints')) || [];
-                        if (!current.includes(p.value)) serviceSetStore('releasedFingerprints', [...current, p.value].slice(-5000));
+                    if (p.key === 'releasedFingerprints' && p.value) {
+                        if (!releasedFingerprintsCache.has(p.value)) {
+                            serviceSetStore('releasedFingerprints', p.value);
+                        }
                     }
                     return;
                 }
                 if (['Finished', 'THREAT BLOCKED', 'SPAM FILTERED', 'MONITORING', 'INFO', 'ERROR'].includes(p.status)) {
+                    // Transparent UTF-8 Base64 decoding
+                    if (p.fullHeaders && typeof p.fullHeaders === 'string') {
+                        try {
+                            const decodedH = Buffer.from(p.fullHeaders, 'base64').toString('utf8');
+                            if (decodedH && !decodedH.includes('\ufffd')) {
+                                p.fullHeaders = decodedH;
+                            }
+                        } catch {}
+                    }
+                    if (p.body && typeof p.body === 'string') {
+                        try {
+                            const decodedB = Buffer.from(p.body, 'base64').toString('utf8');
+                            if (decodedB && !decodedB.includes('\ufffd')) {
+                                p.body = decodedB;
+                            }
+                        } catch {}
+                    }
+
+                    if (!p.subject && p.details) p.subject = p.details;
+                    if (!p.details && p.subject) p.details = p.subject;
+                    if (!p.from && p.sender) p.from = p.sender;
+                    if (!p.sender && p.from) p.sender = p.from;
+                    if (!p.to && p.recips) p.to = p.recips;
+                    if (!p.recipient && p.to) p.recipient = p.to;
+
                     if (p.status === 'INFO' || p.status === 'MONITORING') {
                         logToFile(`Engine: ${p.details || ''}`);
                     } else if (p.status === 'ERROR') {
                         logToFile(`Engine Error: ${p.details || ''}`, 'ERROR');
                     } else {
-                        logToFile(`Scan Result [${p.status}]: ${p.details || ''} (${p.sender || 'N/A'})`);
+                        logToFile(`Scan Result [${p.status}]: ${p.subject || p.details || ''} (${p.sender || 'N/A'})`);
                     }
                     
                     if (p.status !== 'MONITORING' && p.status !== 'INFO' && p.status !== 'ERROR') {
@@ -945,18 +1080,24 @@ async function runOutlookScanner() {
                         }
                         statsBuffer[cat].push(p);
                         scheduleStatePersistenceFlush();
+                        try {
+                            vaultDB.insertEmail(p);
+                        } catch (err) {
+                            logToFile(`[VaultDB Error] ${err.message}`, 'WARN');
+                        }
                         if (p.fullHeaders || p.body) {
-                            const forensicId = p.entryId || p.originalEntryId || p.fingerprint;
-                            const fHash = crypto.createHash('sha256').update(String(forensicId)).digest('hex');
-                            const fPath = path.join(FORENSICS_DIR, `${fHash}.json`);
-                            const rawHeaders = p.fullHeaders ? Buffer.from(p.fullHeaders, 'base64').toString('utf8') : '';
-                            const rawBody = p.body ? Buffer.from(p.body, 'base64').toString('utf8') : '';
-                            fsPromises.writeFile(fPath, JSON.stringify({ 
-                                fullHeaders: rawHeaders, 
-                                body: rawBody 
-                            })).catch((err) => {
-                                logToFile(`[Forensics Error] Failed to persist snapshot for ${fHash}: ${err.message}`, 'ERROR');
+                            const snapshotJson = JSON.stringify({ 
+                                fullHeaders: p.fullHeaders || '', 
+                                body: p.body || '' 
                             });
+                            const idsToPersist = [p.entryId, p.originalEntryId, p.fingerprint].filter(Boolean);
+                            for (const idKey of idsToPersist) {
+                                const fHash = crypto.createHash('sha256').update(String(idKey)).digest('hex');
+                                const fPath = path.join(FORENSICS_DIR, `${fHash}.json`);
+                                fsPromises.writeFile(fPath, snapshotJson).catch((err) => {
+                                    logToFile(`[Forensics Error] Failed to persist snapshot for ${fHash} (${idKey}): ${err.message}`, 'ERROR');
+                                });
+                            }
                         }
                     }
                     broadcastToUi({ type: 'scan-update', data: p }); } });
@@ -984,6 +1125,7 @@ async function runOutlookScanner() {
     });
 }
 
+let isRestarting = false;
 function requestScannerRestart(reason) {
     if (restartTimer) {
         clearTimeout(restartTimer);
@@ -1011,34 +1153,46 @@ function requestScannerRestart(reason) {
         }
     }
 
-    consecutiveEngineFailures++;
-    if (consecutiveEngineFailures >= MAX_ENGINE_FAILURES) {
-        logToFile('Engine: Maximum restart attempts reached. Protection paused. Manual restart required.', 'WARN');
-        broadcastToUi({ type: 'engine-fault', reason: 'Outlook unresponsive' });
-        broadcastToUi({ type: 'outlook-status', running: false, standby: true });
-        isScanning = false;
-        startOutlookStandbyWatcher();
-        return;
+    const isVerifiedFailure = (reason === 'unexpected-exit' || reason === 'watchdog-timeout');
+    if (isVerifiedFailure) {
+        consecutiveEngineFailures++;
+        if (consecutiveEngineFailures >= MAX_ENGINE_FAILURES) {
+            logToFile('Engine: Maximum restart attempts reached. Protection paused. Manual restart required.', 'WARN');
+            broadcastToUi({ type: 'engine-fault', reason: 'Outlook unresponsive' });
+            broadcastToUi({ type: 'outlook-status', running: false, standby: true });
+            isScanning = false;
+            startOutlookStandbyWatcher();
+            return;
+        }
+    } else {
+        consecutiveEngineFailures = 0;
     }
 
-    const delay = Math.min(30000, 2000 * Math.pow(2, consecutiveEngineFailures));
+    const delay = isVerifiedFailure ? Math.min(30000, 2000 * Math.pow(2, consecutiveEngineFailures)) : 500;
     logToFile(`Engine restart scheduled in ${delay}ms (attempt ${consecutiveEngineFailures}/${MAX_ENGINE_FAILURES}, reason: ${reason})...`, 'WARN');
 
     restartTimer = setTimeout(async () => {
         restartTimer = null;
-        if (!configStore || !configStore.get('enabled')) return;
-        const active = await ensureOutlookRunning();
-        if (!active) {
-            startOutlookStandbyWatcher();
-            return;
+        if (isRestarting) return;
+        isRestarting = true;
+        try {
+            if (!configStore || !configStore.get('enabled')) return;
+            const active = await ensureOutlookRunning();
+            if (!active) {
+                startOutlookStandbyWatcher();
+                return;
+            }
+            logToFile(`Hard Engine Restart triggered [Reason: ${reason}]`);
+            if (currentScanChild) {
+                killProcessTree(currentScanChild);
+                currentScanChild = null;
+            }
+            isScanning = false;
+            await new Promise(r => setTimeout(r, 600));
+            await runOutlookScanner();
+        } finally {
+            isRestarting = false;
         }
-        logToFile(`Hard Engine Restart triggered [Reason: ${reason}]`);
-        if (currentScanChild) {
-            currentScanChild.removeAllListeners('exit');
-            currentScanChild.kill('SIGKILL');
-        }
-        isScanning = false;
-        runOutlookScanner();
     }, delay);
 }
 
@@ -1059,7 +1213,7 @@ function startService() {
                             s.write(JSON.stringify({
                                 type: 'status-sync',
                                 enabled: !!configStore.get('enabled'),
-                                stats: dataStore.get('stats'),
+                                stats: statsCache,
                                 config: configStore.store
                             }) + '\n');
                         } else {
@@ -1071,8 +1225,8 @@ function startService() {
                         let val;
                         if (m.key === '') val = configStore ? configStore.store : DEFAULT_CONFIG;
                         else if (m.key === 'processedIds') val = Array.from(processedIdsCache);
-                        else if (m.key === 'stats') val = statsCache || (dataStore ? dataStore.get('stats') : DEFAULT_DATA.stats);
-                        else if (m.key === 'releasedFingerprints') val = dataStore ? dataStore.get('releasedFingerprints') : DEFAULT_DATA.releasedFingerprints;
+                        else if (m.key === 'stats') val = statsCache;
+                        else if (m.key === 'releasedFingerprints') val = Array.from(releasedFingerprintsCache);
                         else val = configStore ? configStore.get(m.key) : DEFAULT_CONFIG[m.key];
                         s.write(JSON.stringify({ type: 'store-data', rid: m.rid, key: m.key, value: val }) + '\n');
                     }
@@ -1096,10 +1250,13 @@ function startService() {
                                     watchdogTimer = null;
                                 }
                                 if (currentScanChild) {
-                                    currentScanChild.removeAllListeners('exit');
-                                    currentScanChild.kill('SIGKILL');
+                                    killProcessTree(currentScanChild);
+                                    currentScanChild = null;
                                 }
-                                if (psWorker) psWorker.kill('SIGKILL');
+                                if (psWorker) {
+                                    killProcessTree(psWorker);
+                                    psWorker = null;
+                                }
                                 flushStatePersistenceSync();
                             } catch {}
                             process.exit(0);
@@ -1118,8 +1275,14 @@ function startService() {
                                     clearInterval(watchdogTimer);
                                     watchdogTimer = null;
                                 }
-                                if (currentScanChild) currentScanChild.kill('SIGKILL');
-                                if (psWorker) psWorker.kill('SIGKILL');
+                                if (currentScanChild) {
+                                    killProcessTree(currentScanChild);
+                                    currentScanChild = null;
+                                }
+                                if (psWorker) {
+                                    killProcessTree(psWorker);
+                                    psWorker = null;
+                                }
                             } catch (err) { }
                             try {
                                 if (flushTimer) {
@@ -1127,13 +1290,19 @@ function startService() {
                                     flushTimer = null;
                                 }
                                 processedIdsCache.clear();
+                                releasedFingerprintsCache.clear();
                                 uncommittedProcessedIdsCount = 0;
+                                isPersistenceDirty = false;
                                 statsBuffer = { malicious: [], suspicious: [], spam: [], safe: [] };
                                 statsCache = { ...DEFAULT_DATA.stats };
                                 backupStoreBeforeWrite('config');
-                                backupStoreBeforeWrite('data');
                                 if (configStore) configStore.clear(); 
-                                if (dataStore) dataStore.clear();
+                                const dataPath = path.join(USER_DATA, 'data.json');
+                                const bakPath = path.join(USER_DATA, 'data.json.bak');
+                                try {
+                                    if (fs.existsSync(dataPath)) fs.copyFileSync(dataPath, bakPath);
+                                    fs.writeFileSync(dataPath, JSON.stringify(DEFAULT_DATA, null, 2), 'utf8');
+                                } catch {}
                             } catch (err) {
                                 logToFile(`[Storage Reset Error]: ${err.message}`, 'ERROR');
                             }
@@ -1142,7 +1311,7 @@ function startService() {
                             } catch (err) { }
                             process.exit(0); 
                         } 
-                        if (m.payload === 'Release' || m.payload === 'Quarantine' || m.payload === 'Delete' || m.payload === 'CleanDuplicates' || m.payload === 'Check-Existence' || m.payload === 'DuplicateScan' || m.payload === 'CloudVirusScan') {
+                        if (m.payload === 'Release' || m.payload === 'Quarantine' || m.payload === 'Delete' || m.payload === 'CleanDuplicates' || m.payload === 'Check-Existence' || m.payload === 'DuplicateScan' || m.payload === 'CloudVirusScan' || m.payload === 'OpenInOutlook') {
                             const worker = getPsWorker();
                             let cmdData = { ...m.data };
                             if (m.payload === 'CloudVirusScan') {
@@ -1292,6 +1461,7 @@ function spawnService() {
 
 app.on('ready', () => {
     Menu.setApplicationMenu(null);
+    ensureOutlookProgrammaticAccessPolicies();
 
     if (isServiceMode) { 
         if (configStore) {
@@ -1370,6 +1540,14 @@ app.on('ready', () => {
 app.on('before-quit', () => {
     isQuitting = true;
     if (isServiceMode) {
+        if (currentScanChild) {
+            killProcessTree(currentScanChild);
+            currentScanChild = null;
+        }
+        if (psWorker) {
+            killProcessTree(psWorker);
+            psWorker = null;
+        }
         flushStatePersistenceSync();
     }
     if (uiPipeClient) {
@@ -1380,11 +1558,19 @@ app.on('before-quit', () => {
 });
 
 process.on('SIGINT', () => {
-    if (isServiceMode) flushStatePersistenceSync();
+    if (isServiceMode) {
+        if (currentScanChild) killProcessTree(currentScanChild);
+        if (psWorker) killProcessTree(psWorker);
+        flushStatePersistenceSync();
+    }
     process.exit(0);
 });
 process.on('SIGTERM', () => {
-    if (isServiceMode) flushStatePersistenceSync();
+    if (isServiceMode) {
+        if (currentScanChild) killProcessTree(currentScanChild);
+        if (psWorker) killProcessTree(psWorker);
+        flushStatePersistenceSync();
+    }
     process.exit(0);
 });
 
@@ -1473,23 +1659,41 @@ ipcMain.handle('get-forensics', async (e, id) => {
     if (!id) {
         return { fullHeaders: 'Unavailable', body: 'Unavailable' };
     }
-    const fHash = crypto.createHash('sha256').update(String(id)).digest('hex'); 
-    const fPath = path.join(FORENSICS_DIR, `${fHash}.json`); 
-    try {
-        const rawContent = await fsPromises.readFile(fPath, 'utf8');
-        const data = JSON.parse(rawContent);
-        return { 
-            fullHeaders: decodeIfLegacyBase64(data.fullHeaders) || 'N/A', 
-            body: decodeIfLegacyBase64(data.body) || 'N/A' 
-        };
-    } catch (err) {
-        if (err.code === 'ENOENT') {
-            logToFile(`[Forensics] Snapshot not found for id ${id} (hash: ${fHash})`, 'INFO');
-        } else {
-            logToFile(`[Forensics Error] Failed reading snapshot for id ${id} (hash: ${fHash}): ${err.message}`, 'ERROR');
+    const candidates = typeof id === 'object'
+        ? [id.entryId, id.originalEntryId, id.fingerprint].filter(Boolean)
+        : [id];
+    
+    for (const cand of candidates) {
+        const fHash = crypto.createHash('sha256').update(String(cand)).digest('hex'); 
+        const fPath = path.join(FORENSICS_DIR, `${fHash}.json`); 
+        try {
+            const rawContent = await fsPromises.readFile(fPath, 'utf8');
+            const data = JSON.parse(rawContent);
+            return { 
+                fullHeaders: decodeIfLegacyBase64(data.fullHeaders) || 'N/A', 
+                body: decodeIfLegacyBase64(data.body) || 'N/A' 
+            };
+        } catch (err) {
+            // Check next candidate
         }
-        return { fullHeaders: 'Unavailable', body: 'Unavailable' };
     }
+    if (vaultDB) {
+        for (const cand of candidates) {
+            try {
+                const item = vaultDB.getEmailById(cand);
+                if (item && (item.fullHeaders || item.headers || item.body)) {
+                    const h = item.fullHeaders || item.headers || '';
+                    const b = item.body || '';
+                    return {
+                        fullHeaders: decodeIfLegacyBase64(h) || (h ? h : 'N/A'),
+                        body: decodeIfLegacyBase64(b) || (b ? b : 'N/A')
+                    };
+                }
+            } catch {}
+        }
+    }
+    logToFile(`[Forensics] Snapshot not found for query: ${typeof id === 'object' ? JSON.stringify(id) : id}`, 'INFO');
+    return { fullHeaders: 'Unavailable', body: 'Unavailable' };
 });
 ipcMain.handle('set-processed-ids', (e, v) => { 
     if (uiPipeClient) { 
@@ -1593,6 +1797,15 @@ ipcMain.handle('set-threat-intel-level', (e, v) => {
     }
     return { ok: false, error: 'Service initializing' };
 });
+ipcMain.handle('set-first-run', (e, v) => {
+    const isFirst = !!v;
+    configCache.firstRun = isFirst;
+    if (uiPipeClient) {
+        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'firstRun', value: isFirst }) + '\n');
+        return { ok: true };
+    }
+    return { ok: true };
+});
 ipcMain.handle('set-startup', (e, v) => {
     const enabled = !!v;
     configCache.launchAtStartup = enabled;
@@ -1602,6 +1815,24 @@ ipcMain.handle('set-startup', (e, v) => {
         return { ok: true };
     }
     return { ok: true };
+});
+ipcMain.handle('check-startup', async () => {
+    const configEnabled = !!(configCache && configCache.launchAtStartup);
+    return new Promise(resolve => {
+        execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'DeskGuardForMicrosoftOutlook'], (err, stdout) => {
+            const regExists = !err && !!(stdout && stdout.includes('DeskGuardForMicrosoftOutlook'));
+            let loginItem = false;
+            try {
+                loginItem = app.getLoginItemSettings().openAtLogin;
+            } catch {}
+            resolve({
+                configEnabled,
+                systemActive: regExists || loginItem,
+                regExists,
+                loginItem
+            });
+        });
+    });
 });
 ipcMain.handle('release-email', async (e, d) => {
     if (!uiPipeClient || !d || (!d.entryId && !d.fingerprint)) return { success: false, error: 'Invalid parameters' };
@@ -1640,10 +1871,7 @@ ipcMain.handle('release-email', async (e, d) => {
                 if (uiPipeClient) {
                     uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'stats', value: currentStats }) + '\n');
                     if (fp) {
-                        const currentRel = (dataStore && dataStore.get('releasedFingerprints')) || [];
-                        if (!currentRel.includes(fp)) {
-                            uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'releasedFingerprints', value: [...currentRel, fp] }) + '\n');
-                        }
+                        uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'releasedFingerprints', value: fp }) + '\n');
                     }
                 }
                 broadcastToUi({ type: 'stats-update', data: { full: true, stats: currentStats } });
@@ -1797,15 +2025,33 @@ ipcMain.handle('delete-duplicates', async (e, d) => {
 });
 ipcMain.handle('reset-duplicate-engine', async () => { if (uiPipeClient) { uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'ResetDuplicateStack' }) + '\n'); return { ok: true }; } return { ok: false, error: 'Service initializing' }; });
 ipcMain.handle('scan-virus', async (e, id) => {
+    let vtKeyDec = '';
+    const vtKeyEnc = configCache && configCache.vtApiKey;
+    if (vtKeyEnc) {
+        try { vtKeyDec = getDecryptedVtKey(vtKeyEnc); } catch {}
+    }
+    if (!vtKeyDec || vtKeyDec === 'MASKED_FOR_SECURITY' || vtKeyDec.trim().length < 16) {
+        return { 
+            success: false, 
+            code: 'NO_API_KEY', 
+            error: 'VirusTotal API key is not configured. Please enter your API key to enable live threat intelligence scanning.' 
+        };
+    }
     if (!uiPipeClient) return { success: false, error: 'Service disconnected' };
     const rid = crypto.randomBytes(8).toString('hex');
     const threatLevel = (configCache && configCache.threatIntelligenceLevel !== undefined)
         ? configCache.threatIntelligenceLevel
         : DEFAULT_CONFIG.threatIntelligenceLevel;
     return new Promise(resolve => {
-        const timeout = setTimeout(() => { reqHandlers.delete(rid); resolve({ success: false, error: 'Cloud Scan Timeout' }); }, 5000);
-        reqHandlers.set(rid, (val) => { clearTimeout(timeout); resolve({ success: val.success !== false, data: val.data || val }); });
-        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'CloudVirusScan', rid, data: { entryId: id, threatIntelligenceLevel: threatLevel } }) + '\n');
+        const timeout = setTimeout(() => { 
+            reqHandlers.delete(rid); 
+            resolve({ success: false, code: 'TIMEOUT', error: 'Cloud Scan Timeout. VirusTotal API or Outlook did not respond within 25 seconds.' }); 
+        }, 25000);
+        reqHandlers.set(rid, (val) => { 
+            clearTimeout(timeout); 
+            resolve({ success: val.success !== false, data: val.data || val }); 
+        });
+        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'CloudVirusScan', rid, data: { entryId: id, threatIntelligenceLevel: threatLevel, vtKey: vtKeyDec } }) + '\n');
     });
 });
 ipcMain.handle('export-config', async () => { 
@@ -1838,7 +2084,7 @@ ipcMain.handle('import-config', async () => {
     try {
         const content = fs.readFileSync(filePaths[0], 'utf8');
         const data = JSON.parse(content);
-        const keys = ['vtApiKey', 'spamKeywords', 'rubrics', 'whitelist', 'blacklist', 'launchAtStartup', 'scanningSpeed', 'threatIntelligenceLevel', 'historyScanEnabled'];
+        const keys = ['vtApiKey', 'spamKeywords', 'rubrics', 'whitelist', 'blacklist', 'launchAtStartup', 'scanningSpeed', 'threatIntelligenceLevel', 'historyScanEnabled', 'firstRun'];
         for (const k of keys) {
             if (data[k] !== undefined) {
                 let val = data[k];
@@ -1862,4 +2108,75 @@ ipcMain.handle('import-config', async () => {
     } catch (e) {
         return { success: false, error: e.message };
     }
+});
+
+ipcMain.handle('search-vault', (e, params = {}) => {
+    try {
+        const results = vaultDB.searchEmails(params);
+        return { ok: true, results };
+    } catch (err) {
+        logToFile(`[Vault Search Error]: ${err.message}`, 'WARN');
+        return { ok: false, error: err.message, results: { total: 0, rows: [] } };
+    }
+});
+
+ipcMain.handle('get-sender-suggestions', (e, prefix) => {
+    try {
+        const suggestions = vaultDB.getSenderSuggestions(prefix, 10);
+        return { ok: true, suggestions };
+    } catch (err) {
+        return { ok: false, error: err.message, suggestions: [] };
+    }
+});
+
+ipcMain.handle('open-email', async (e, d) => {
+    if (!d || !d.entryId) return { success: false, error: 'Invalid parameters: entryId is required' };
+    const rid = crypto.randomBytes(8).toString('hex');
+    if (!uiPipeClient) {
+        try {
+            const worker = getPsWorker();
+            if (!worker || !worker.stdin) return { success: false, error: 'Outlook Worker process unavailable' };
+            return new Promise(resolve => {
+                const timeout = setTimeout(() => {
+                    reqHandlers.delete(rid);
+                    resolve({ success: false, error: 'Open in Outlook operation timed out' });
+                }, 10000);
+                reqHandlers.set(rid, (val) => {
+                    clearTimeout(timeout);
+                    resolve(val !== undefined ? val : { success: false });
+                });
+                worker.stdin.write(JSON.stringify({ action: 'OpenInOutlook', rid, entryId: d.entryId, storeId: d.storeId }) + '\n');
+            });
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    }
+    return new Promise(resolve => {
+        const timeout = setTimeout(() => {
+            reqHandlers.delete(rid);
+            resolve({ success: false, error: 'Open in Outlook operation timed out' });
+        }, 10000);
+        reqHandlers.set(rid, (val) => {
+            clearTimeout(timeout);
+            resolve(val !== undefined ? val : { success: false });
+        });
+        uiPipeClient.write(JSON.stringify({ type: 'cmd', payload: 'OpenInOutlook', rid, data: d }) + '\n');
+    });
+});
+
+ipcMain.handle('set-scan-modes', (e, v) => {
+    if (!v) return { ok: false };
+    if (v.onAccessEnabled !== undefined) {
+        configCache.onAccessEnabled = !!v.onAccessEnabled;
+        if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'onAccessEnabled', value: !!v.onAccessEnabled }) + '\n');
+    }
+    if (v.onDemandLimit !== undefined) {
+        configCache.onDemandLimit = Number(v.onDemandLimit) || 1000;
+        if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'onDemandLimit', value: Number(v.onDemandLimit) || 1000 }) + '\n');
+    }
+    if (v.deepHistoryScanEnabled !== undefined) {
+        configCache.deepHistoryScanEnabled = !!v.deepHistoryScanEnabled;
+        if (uiPipeClient) uiPipeClient.write(JSON.stringify({ type: 'store-set', key: 'deepHistoryScanEnabled', value: !!v.deepHistoryScanEnabled }) + '\n');
+    }
+    return { ok: true };
 });

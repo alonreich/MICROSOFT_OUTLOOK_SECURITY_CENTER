@@ -6,8 +6,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --disable-gpu --disable-software-rasterizer --disable-gpu-compositing --disable-gpu-sandbox --disable-accelerated-2d-canvas --in-process-gpu --disable-gpu-process --use-gl=swiftshader --log-level=3",
-    "package": "electron-packager . \"DeskGuard for Microsoft Outlook\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.png",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "package": "electron-packager . \"DeskGuard for Microsoft Outlook\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico",
+    "test": "node -c main.js preload.js vault_db.js ui_list.js ui_main.js ui_forensics.js ui_settings.js ui_duplicates.js ui_engines.js ui_history.js ui_reset.js"
   },
   "keywords": [
     "security",
