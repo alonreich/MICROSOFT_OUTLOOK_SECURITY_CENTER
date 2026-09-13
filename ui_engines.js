@@ -1,17 +1,31 @@
-(function() {
+// Centralized Sanitization & HTML Entity Encoder Fallback
+window.escapeHtml = window.escapeHtml || function(str) {
+    if (str === null || str === undefined) return '';
+    if (typeof str !== 'string') str = String(str);
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+window.escapeHTML = window.escapeHtml;
+
+window.SecurityUI = window.SecurityUI || {};
+SecurityUI.Engines = (function() {
     const api = window.securityApi;
     const tooltipEl = document.getElementById('tooltip');
     let currentWeights = {}, currentToggles = {}, currentSpamThreshold = 50;
     let tooltipTimer = null;
 
-    window.stepWeight = (key, delta) => { 
+    function stepWeight(key, delta) { 
         if (!currentToggles[key]) return; 
         let newVal = currentWeights[key] + delta; 
         if (newVal < 1) newVal = 1; 
         if (newVal > 100) newVal = 100; 
         rebalanceWeights(key, newVal); 
-        renderSensitivityUI(); 
-    };
+        render(); 
+    }
 
     function rebalanceWeights(key, newVal) {
         if (!currentToggles[key]) { currentWeights[key] = 0; } else {
@@ -24,7 +38,7 @@
         if (total !== 100 && activeKeys.length > 0) { const adjustKey = activeKeys.find(k => k !== key) || activeKeys[0]; currentWeights[adjustKey] += (100 - total); }
     }
 
-    function renderSensitivityUI() {
+    function render() {
         const container = document.getElementById('sensitivity-container');
         const labels = { dmarc: 'DMARC AUTHENTICATION', alignment: 'SENDER ALIGNMENT', dkim: 'DKIM SIGNATURES', spf: 'SPF AUTHORIZATION', rdns: 'REVERSE DNS CHECK', body: 'ANTI-PHISHING SHIELD', heuristics: 'SMART HEURISTICS', rbl: 'GLOBAL BLACKLISTS' };
         const tips = {
@@ -40,7 +54,7 @@
 
         container.innerHTML = Object.keys(currentWeights).map(key => {
             const val = currentWeights[key]; const en = currentToggles[key];
-            return `<div class="sensitivity-row" data-tip="${window.escapeHTML(tips[key])}" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4}; cursor:help;"><input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}> <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div> <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;"> <div style="display:flex; align-items:center; gap:8px;"> <button class="btn-step" onclick="stepWeight('${key}',-1)" ${en?'':'disabled'}>-</button> <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div> <button class="btn-step" onclick="stepWeight('${key}',1)" ${en?'':'disabled'}>+</button> </div> </div>`;
+            return `<div class="sensitivity-row" data-tip="${window.escapeHTML(tips[key])}" style="display:flex; align-items:center; gap:15px; opacity:${en?1:0.4}; cursor:help;"><input type="checkbox" class="w-tog" data-key="${key}" ${en?'checked':''}> <div style="flex:1.2; font-size:0.75rem; font-weight:bold;">${labels[key]}</div> <input type="range" class="w-slider" data-key="${key}" min="1" max="100" value="${val}" ${en?'':'disabled'} style="flex:2; cursor:pointer;"> <div style="display:flex; align-items:center; gap:8px;"> <button class="btn-step btn-minus" data-key="${key}">-</button> <div style="width:40px; text-align:center; font-family:monospace; color:var(--accent); font-weight:900;">${val}%</div> <button class="btn-step btn-plus" data-key="${key}">+</button> </div> </div>`;
         }).join('');
 
         document.querySelectorAll('.sensitivity-row').forEach(row => {
@@ -56,8 +70,10 @@
             row.onmouseleave = () => { clearTimeout(tooltipTimer); tooltipEl.style.display = 'none'; };
         });
 
-        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { currentToggles[c.dataset.key] = c.checked; rebalanceWeights(c.dataset.key, c.checked ? 10 : 0); renderSensitivityUI(); });
-        document.querySelectorAll('.w-slider').forEach(s => s.oninput = (e) => { rebalanceWeights(e.target.dataset.key, parseInt(e.target.value)); renderSensitivityUI(); });
+        document.querySelectorAll('.w-tog').forEach(c => c.onchange = () => { currentToggles[c.dataset.key] = c.checked; rebalanceWeights(c.dataset.key, c.checked ? 10 : 0); render(); });
+        document.querySelectorAll('.w-slider').forEach(s => s.oninput = (e) => { rebalanceWeights(e.target.dataset.key, parseInt(e.target.value)); render(); });
+        document.querySelectorAll('.btn-minus').forEach(b => b.onclick = () => stepWeight(b.dataset.key, -1));
+        document.querySelectorAll('.btn-plus').forEach(b => b.onclick = () => stepWeight(b.dataset.key, 1));
     }
 
     document.getElementById('sensitivity-btn').onclick = async () => { 
@@ -70,7 +86,7 @@
         document.getElementById('verdict-threshold-slider').value = currentSpamThreshold;
         document.getElementById('verdict-threshold-val').textContent = currentSpamThreshold + '%';
         document.getElementById('verdict-description').textContent = `Emails scoring ${currentSpamThreshold}% or lower will be marked as SPAM.`;
-        renderSensitivityUI(); 
+        render(); 
         document.getElementById('sensitivity-modal').style.display = 'flex'; 
     };
 
@@ -96,7 +112,9 @@
         document.getElementById('verdict-threshold-slider').value = 50;
         document.getElementById('verdict-threshold-val').textContent = '50%';
         document.getElementById('verdict-description').textContent = 'Emails scoring 50% or lower will be marked as SPAM.';
-        renderSensitivityUI(); 
+        render(); 
         window.showNotification('Heuristic engine weights reset to factory defaults.');
     };
+
+    return { render: render };
 })();

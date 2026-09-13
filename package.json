@@ -1,11 +1,12 @@
 {
-  "name": "microsoft-outlook-security-center",
-  "version": "1.7.0",
-  "description": "Professional Forensic Security Hub for Outlook",
+  "name": "deskguard-for-microsoft-outlook",
+  "productName": "DeskGuard for Microsoft Outlook",
+  "version": "2.5.0",
+  "description": "DeskGuard for Microsoft Outlook - Forensic Security Hub & Anti-Phishing Guard",
   "main": "main.js",
   "scripts": {
     "start": "electron . --disable-gpu --disable-software-rasterizer --disable-gpu-compositing --disable-gpu-sandbox --disable-accelerated-2d-canvas --in-process-gpu --disable-gpu-process --use-gl=swiftshader --log-level=3",
-    "package": "electron-packager . MICROSOFT_OUTLOOK_SECURITY_CENTER --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.png",
+    "package": "electron-packager . \"DeskGuard for Microsoft Outlook\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.png",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

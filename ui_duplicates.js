@@ -1,266 +1,205 @@
+// Centralized Sanitization & HTML Entity Encoder Fallback
+window.escapeHtml = window.escapeHtml || function(str) {
+    if (str === null || str === undefined) return '';
+    if (typeof str !== 'string') str = String(str);
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+window.escapeHTML = window.escapeHtml;
+
 window.SecurityUI = window.SecurityUI || {};
 SecurityUI.Duplicates = (function() {
     const api = window.securityApi;
-    const modal = document.getElementById('duplicate-modal');
-    const list = document.getElementById('duplicate-list');
-    const scanBtn = document.getElementById('scan-duplicates-btn');
-    const pauseBtn = document.getElementById('pause-duplicates-btn');
-    const deleteBtn = document.getElementById('delete-duplicates-btn');
-    const progressBar = document.getElementById('dup-progress-bar');
-    const progressFolder = document.getElementById('dup-progress-folder');
-    const progressItem = document.getElementById('dup-progress-item');
-    const statFound = document.getElementById('dup-stat-found');
-    const statScanned = document.getElementById('dup-stat-scanned');
-    const log = document.getElementById('duplicate-log');
+    let duplicateVirtualList = null;
+    let duplicateItems = [];
+    window.lastDuplicates = [];
 
-    function formatSize(bytes) {
-        if (!bytes) return "0 B";
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    function addDupLog(msg, type = 'info') {
-        const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        const s = window.AppStore.duplicateState;
-        s.logs.push({ text: line, type });
-        if (s.logs.length > 500) s.logs.shift();
-        
+    function createDuplicateRow() {
         const div = document.createElement('div');
-        div.textContent = line;
-        if (type === 'error') div.style.color = 'var(--danger)';
-        if (type === 'warn') div.style.color = 'var(--warn)';
-        if (type === 'success') div.style.color = 'var(--ok)';
-        log.appendChild(div);
-        log.scrollTop = log.scrollHeight;
+        div.className = 'list-item duplicate-grid virtual-row';
+
+        const timeEl = document.createElement('div');
+        timeEl.style.fontSize = '0.75rem';
+        timeEl.style.color = 'var(--muted)';
+        timeEl.style.fontFamily = 'monospace';
+
+        const subjEl = document.createElement('div');
+        subjEl.style.fontWeight = '500';
+        subjEl.style.whiteSpace = 'nowrap';
+        subjEl.style.overflow = 'hidden';
+        subjEl.style.textOverflow = 'ellipsis';
+        subjEl.style.color = 'var(--text)';
+
+        const sizeEl = document.createElement('div');
+        sizeEl.style.fontSize = '0.75rem';
+        sizeEl.style.color = 'var(--muted)';
+
+        const folderEl = document.createElement('div');
+        folderEl.style.fontSize = '0.75rem';
+        folderEl.style.whiteSpace = 'nowrap';
+        folderEl.style.overflow = 'hidden';
+        folderEl.style.textOverflow = 'ellipsis';
+        folderEl.style.color = 'var(--muted)';
+
+        const survivorEl = document.createElement('div');
+        survivorEl.style.fontSize = '0.75rem';
+        survivorEl.style.whiteSpace = 'nowrap';
+        survivorEl.style.overflow = 'hidden';
+        survivorEl.style.textOverflow = 'ellipsis';
+        survivorEl.style.color = 'var(--accent-green, #4ade80)';
+
+        div.appendChild(timeEl);
+        div.appendChild(subjEl);
+        div.appendChild(sizeEl);
+        div.appendChild(folderEl);
+        div.appendChild(survivorEl);
+
+        div._cells = { timeEl, subjEl, sizeEl, folderEl, survivorEl };
+        return div;
     }
 
-    function updateButtons() {
-        const s = window.AppStore.duplicateState;
-        scanBtn.textContent = s.isScanning ? 'SCANNING...' : 'SCAN MAILBOX';
-        scanBtn.disabled = s.isScanning;
-        scanBtn.style.opacity = s.isScanning ? 0.5 : 1;
-        
-        pauseBtn.style.display = (s.isScanning || s.isPaused) ? 'block' : 'none';
-        pauseBtn.textContent = s.isPaused ? 'RESUME' : 'PAUSE';
-        
-        const checked = list.querySelectorAll('input[type="checkbox"]:checked').length;
-        deleteBtn.disabled = checked === 0;
-        deleteBtn.style.opacity = checked === 0 ? 0.5 : 1;
+    function updateDuplicateRow(div, item) {
+        const cells = div._cells;
+        const ts = item.timestamp || '';
+        if (cells.timeEl.textContent !== ts) cells.timeEl.textContent = ts;
+        const subj = item.subject || 'No Subject';
+        if (cells.subjEl.textContent !== subj) cells.subjEl.textContent = subj;
+        const sz = item.size ? `${(item.size / 1024).toFixed(1)} KB` : '0 KB';
+        if (cells.sizeEl.textContent !== sz) cells.sizeEl.textContent = sz;
+        const fld = item.folder || '';
+        if (cells.folderEl.textContent !== fld) cells.folderEl.textContent = fld;
+        const survFld = item.survivorFolder || (item.survivor && item.survivor.folder) || 'Inbox';
+        const survText = `${survFld} (Survivor Preserved)`;
+        if (cells.survivorEl.textContent !== survText) cells.survivorEl.textContent = survText;
+        div.setAttribute('data-id', item.entryId || '');
     }
 
-    function restoreUIFromState() {
-        const s = window.AppStore.duplicateState;
-        statScanned.textContent = s.scannedCount;
-        statFound.textContent = s.items.length;
-        progressBar.style.width = s.progress + '%';
-        
-        log.innerHTML = '';
-        s.logs.forEach(l => {
-            const div = document.createElement('div');
-            div.textContent = l.text;
-            if (l.type === 'error') div.style.color = 'var(--danger)';
-            if (l.type === 'warn') div.style.color = 'var(--warn)';
-            if (l.type === 'success') div.style.color = 'var(--ok)';
-            log.appendChild(div);
-        });
-        log.scrollTop = log.scrollHeight;
-        
-        if (s.items.length > 0 || s.isScanning || s.isPaused) {
-            document.getElementById('duplicate-progress-card').style.display = 'block';
-            log.style.display = 'block';
-        }
-        
-        renderDuplicateList(s.items);
-        updateButtons();
-    }
+    function render(data) {
+        const view = document.getElementById('duplicate-view');
+        if (!data || !view) return;
 
-    list.addEventListener('change', (e) => {
-        if (e.target.type === 'checkbox') updateButtons();
-    });
-
-    api.onDuplicateUpdate(d => {
-        const s = window.AppStore.duplicateState;
-        
-        if (d.status === 'Paused') {
-            s.isScanning = false;
-            s.isPaused = true;
-            addDupLog('SCAN PAUSED: State preserved in memory.', 'warn');
-            progressFolder.textContent = 'PAUSED';
-            progressItem.textContent = 'Engine is standing by...';
-            updateButtons();
-            return;
-        }
-
-        if (d.status === 'StoreStart') {
-            s.storesMeta[d.store] = { totalSize: d.size, totalItems: 0, scannedItems: 0, scannedSize: 0, found: 0 };
-            addDupLog(`PROBING STORE: ${d.store} (Size: ${formatSize(d.size)})`);
-            return;
-        }
-
-        if (d.status === 'StoreMeta') {
-            if (s.storesMeta[d.store]) s.storesMeta[d.store].totalItems = d.totalItems;
-            addDupLog(`INDEXED: ${d.store} - ${d.totalItems} emails found.`);
-            return;
-        }
-
-        if (d.status === 'StoreFinish') {
-            const meta = s.storesMeta[d.store] || { found: 0 };
-            window.showNotification(`FINISHED: ${d.store}\nScanned: ${d.scanned} emails (${formatSize(d.size)})\nDuplicates: ${meta.found}`);
-            addDupLog(`COMPLETED: ${d.store}. Found ${meta.found} redundant copies in this store.`, 'success');
-            return;
-        }
-
-        if (!s.isScanning) return;
-        
-        if (d.status === 'Scanned') {
-            s.scannedCount = d.scanned;
-            statScanned.textContent = s.scannedCount;
-            statFound.textContent = s.items.length;
-            
-            const meta = s.storesMeta[d.store];
-            if (meta) {
-                meta.scannedItems = d.storeScanned;
-                meta.scannedSize = d.storeScannedSize;
-                const pct = meta.totalItems > 0 ? Math.round((meta.scannedItems / meta.totalItems) * 100) : 0;
-                s.progress = pct;
-                progressFolder.textContent = `SCANNING: ${d.store} [${pct}%]`;
-                progressItem.textContent = `CHECKING (${meta.scannedItems}/${meta.totalItems}): "${d.currentItem || 'Email'}" [${formatSize(meta.scannedSize)} / ${formatSize(meta.totalSize)}]`;
-                progressBar.style.width = pct + '%';
-            }
-
-        } else if (d.status === 'Found') {
-            addDupLog(`Identified Redundant Copy: "${d.current}"`, 'warn');
-            if (s.storesMeta[d.store]) s.storesMeta[d.store].found++;
-            
-            if (d.items) {
-                s.items = d.items;
-                renderDuplicateList(s.items);
-            }
-        } else if (d.status === 'Finished') {
-            s.isScanning = false;
-            s.isPaused = false;
-            s.progress = 100;
-            addDupLog('FULL MAILBOX DISCOVERY COMPLETE.', 'success');
-            progressFolder.textContent = 'SCAN FINISHED';
-            progressItem.textContent = `Total Scanned: ${s.scannedCount} emails. Found ${d.items ? d.items.length : s.items.length} duplicates.`;
-            progressBar.style.width = '100%';
-            if (d.items) s.items = d.items;
-            renderDuplicateList(s.items);
-            updateButtons();
-        }
-    });
-
-    function renderDuplicateList(items) {
-        if (!items || items.length === 0) {
-            list.innerHTML = '<div class="empty-state">NO REDUNDANT COPIES FOUND</div>';
-            return;
-        }
-        list.innerHTML = '';
-        items.forEach(i => {
-            const row = document.createElement('div');
-            row.className = 'list-item';
-            row.innerHTML = `
-                <div class="col-check"><input type="checkbox" value="${i.entryId}"></div>
-                <div title="${window.escapeHTML(i.subject)}">${window.escapeHTML(i.subject)}</div>
-                <div title="${window.escapeHTML(i.sender)}">${window.escapeHTML(i.sender)}</div>
-                <div>${i.timestamp}</div>
-                <div>${formatSize(i.size)}</div>
-                <div title="${window.escapeHTML(i.folder)}">${window.escapeHTML(i.folder)}</div>
-                <div style="color:var(--warn); font-style:italic;">Identical DNA found in ${i.store}</div>
+        if (data.status === 'Scanned' || data.status === 'Progress' || data.status === 'Found') {
+            const scannedCount = data.scanned !== undefined ? data.scanned : (data.current || 0);
+            const html = `
+                <div style="padding: 40px; text-align: center;">
+                    <div class="stat-value" style="color: var(--accent);">${scannedCount}</div>
+                    <div class="stat-label">Total Items Scanned</div>
+                    <div style="margin-top: 20px; font-size: 0.9rem; color: var(--muted); line-height: 1.6;">
+                        ${data.store ? `Scanning: <b>${window.escapeHtml(data.store)}</b> / ${window.escapeHtml(data.currentFolder || data.folder || '')}<br>` : ''}
+                        ${data.details ? `<span>${window.escapeHtml(data.details)}</span><br>` : ''}
+                    </div>
+                    <div style="margin-top: 30px;">
+                        <button onclick="window.securityApi.pauseDuplicateScan()">Pause Discovery</button>
+                    </div>
+                </div>
             `;
-            list.appendChild(row);
-        });
-        updateButtons();
+            if (view.innerHTML !== html) view.innerHTML = html;
+        } else if (data.status === 'Finished') {
+            const items = data.items || [];
+            duplicateItems = items;
+            window.lastDuplicates = items.map(i => i.entryId);
+            
+            view.innerHTML = `
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-shrink: 0;">
+                    <h2 style="margin: 0; font-size: 1.1rem;">${items.length} Redundant Emails Found</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="primary" onclick="cleanDuplicatesSafe()" ${items.length === 0 ? 'disabled' : ''}>Move to Deleted Items (Safe)</button>
+                        <button class="danger" onclick="cleanDuplicatesPurge()" ${items.length === 0 ? 'disabled' : ''}>Permanent Purge</button>
+                    </div>
+                </div>
+                <div class="list-header duplicate-grid" style="flex-shrink: 0;">
+                    <div>Date</div>
+                    <div>Subject</div>
+                    <div>Size</div>
+                    <div>Duplicate Location</div>
+                    <div>Survivor Status</div>
+                </div>
+                <div id="duplicate-list" class="list-container" style="flex: 1; min-height: 0; position: relative; overflow-y: auto;">
+                </div>
+            `;
+
+            const container = document.getElementById('duplicate-list');
+            if (container && window.VirtualList) {
+                duplicateVirtualList = new window.VirtualList({
+                    container: container,
+                    rowHeight: 44,
+                    buffer: 5,
+                    createRow: createDuplicateRow,
+                    updateRow: updateDuplicateRow,
+                    emptyRenderer: () => `
+                        <div class="empty-state">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                            <h3>Clean Mailbox</h3>
+                            <p>No redundant or duplicate email copies detected.</p>
+                        </div>`
+                });
+                duplicateVirtualList.setItems(items, true);
+            }
+        } else if (data.status === 'Paused') {
+            view.innerHTML = `
+                <div style="padding: 40px; text-align: center;">
+                    <h3>Discovery Paused</h3>
+                    <p style="color: var(--muted); margin-bottom: 24px;">The duplicate discovery crawler has been temporarily suspended.</p>
+                    <button class="primary" onclick="window.securityApi.resumeDuplicateScan()">Resume Discovery</button>
+                </div>
+            `;
+        }
     }
 
-    scanBtn.onclick = async () => {
-        const s = window.AppStore.duplicateState;
-        if (s.isPaused) {
-            await api.resumeDuplicateScan();
-            s.isPaused = false;
-            s.isScanning = true;
-            updateButtons();
-            return;
-        }
-        
-        s.isScanning = true;
-        s.isPaused = false;
-        await api.scanDuplicates();
-        updateButtons();
-    };
-
-    pauseBtn.onclick = async () => {
-        const s = window.AppStore.duplicateState;
-        if (s.isPaused) {
-            await api.resumeDuplicateScan();
-            s.isPaused = false;
-            s.isScanning = true;
-        } else {
-            await api.pauseDuplicateScan();
-            s.isScanning = false;
-            s.isPaused = true;
-        }
-        updateButtons();
-    };
-
-    document.getElementById('rescan-everything-btn').onclick = () => {
-        window.showConfirmModal(
-            'RESCAN EVERYTHING',
-            'This will erase the current list and restart the scan from the very beginning. Proceed?',
+    window.cleanDuplicatesSafe = async () => {
+        if (!duplicateItems || duplicateItems.length === 0) return;
+        window.showConfirm(
+            "Move Duplicates to Deleted Items",
+            `This will safely move ${duplicateItems.length} redundant email copies to Deleted Items. Pre-flight validation will ensure that original survivor emails remain untouched in their current folders. Proceed?`,
+            null,
             async () => {
-                window.AppStore.duplicateState = {
-                    items: [],
-                    scannedCount: 0,
-                    storesMeta: {},
-                    isScanning: true,
-                    isPaused: false,
-                    progress: 0,
-                    logs: []
-                };
-                list.innerHTML = '';
-                progressBar.style.width = '0%';
-                document.getElementById('duplicate-progress-card').style.display = 'block';
-                log.style.display = 'block';
-                log.innerHTML = '';
-                addDupLog('Restarting fresh discovery scan...');
-                
-                await api.resetDuplicateEngine(); 
-                await api.scanDuplicates();
-                updateButtons();
-            }
-        );
-    };
-
-    document.getElementById('duplicate-detection-btn').onclick = () => {
-        modal.style.display = 'flex';
-        document.getElementById('settings-modal').style.display = 'none';
-        restoreUIFromState();
-    };
-
-    document.getElementById('close-duplicate-modal').onclick = () => {
-        modal.style.display = 'none';
-    };
-
-    deleteBtn.onclick = () => {
-        const checkboxes = list.querySelectorAll('input[type="checkbox"]:checked');
-        const ids = Array.from(checkboxes).map(cb => cb.value);
-        if (ids.length === 0) return;
-
-        window.showConfirmModal(
-            'BATCH CLEANUP',
-            `Are you sure you want to permanently delete ${ids.length} redundant email copies?`,
-            async () => {
-                deleteBtn.disabled = true;
-                deleteBtn.textContent = 'DELETING...';
-                const res = await api.deleteDuplicates({ entryIds: ids });
-                if (res.ok) {
-                    window.showNotification(`Successfully removed ${ids.length} redundant emails.`);
-                    window.AppStore.duplicateState.items = window.AppStore.duplicateState.items.filter(i => !ids.includes(i.entryId));
-                    renderDuplicateList(window.AppStore.duplicateState.items);
+                const res = await api.deleteDuplicates({ items: duplicateItems, mode: 'safe' });
+                const success = (res && res.successCount !== undefined) ? res.successCount : ((res && res.count) || 0);
+                const skipped = (res && res.skippedCount) || 0;
+                let msg = `Clean-up Complete:\n- Successfully isolated: ${success} redundant copies.`;
+                if (skipped > 0) {
+                    msg += `\n- Skipped (Protected): ${skipped} items (survivors missing or modified).`;
                 }
+                alert(msg);
+                window.lastDuplicates = [];
+                duplicateItems = [];
+                if (duplicateVirtualList) duplicateVirtualList.setItems([], true);
+                render({ status: 'Finished', items: [] });
             }
         );
     };
+
+    window.cleanDuplicatesPurge = async () => {
+        if (!duplicateItems || duplicateItems.length === 0) return;
+        window.showConfirm(
+            "Permanent Purge of Duplicates",
+            `WARNING: This will permanently delete ${duplicateItems.length} redundant email copies from Outlook. Pre-flight validation will strictly verify that each original survivor exists before any duplicate is deleted. Type PURGE to confirm.`,
+            "PURGE",
+            async () => {
+                const res = await api.deleteDuplicates({ items: duplicateItems, mode: 'purge' });
+                const success = (res && res.successCount !== undefined) ? res.successCount : ((res && res.count) || 0);
+                const skipped = (res && res.skippedCount) || 0;
+                let msg = `Permanent Purge Complete:\n- Successfully deleted: ${success} redundant copies.`;
+                if (skipped > 0) {
+                    msg += `\n- Skipped (Protected): ${skipped} items (survivors missing or modified).`;
+                }
+                alert(msg);
+                window.lastDuplicates = [];
+                duplicateItems = [];
+                if (duplicateVirtualList) duplicateVirtualList.setItems([], true);
+                render({ status: 'Finished', items: [] });
+            }
+        );
+    };
+
+    // Backward-compatibility alias
+    window.deleteDuplicates = window.cleanDuplicatesSafe;
+
+    api.onDuplicateUpdate(data => render(data));
+
+    return {};
 })();

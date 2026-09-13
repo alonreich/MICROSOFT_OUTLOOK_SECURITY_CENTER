@@ -1,201 +1,100 @@
+// Centralized Sanitization & HTML Entity Encoder Fallback
+window.escapeHtml = window.escapeHtml || function(str) {
+    if (str === null || str === undefined) return '';
+    if (typeof str !== 'string') str = String(str);
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+window.escapeHTML = window.escapeHtml;
+
 window.SecurityUI = window.SecurityUI || {};
 SecurityUI.Settings = (function() {
     const api = window.securityApi;
 
-    const intelTips = [
-        "DISABLE PROTECTION: No deep malware scans. API engines used for spam identification only.",
-        "SCAN ONLY SUSPECIOUS EMAIL: Deep analysis triggered for scores under 65%. (Recommended)",
-        "ALWAYS PROTECT: Mandatory SHA256 hashing and API verification for every single email."
-    ];
+    async function sync() {
+        const config = await api.getConfig();
+        const body = document.getElementById('settings-body');
+        body.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <div>
+                    <h3 style="margin-top: 0;">Protection Controls</h3>
+                    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>Security Protection Active</span>
+                        <label class="switch">
+                            <input type="checkbox" id="cfg-enabled" ${config.enabled ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 500;">Launch at Startup</div>
+                            <div style="font-size: 11px; color: var(--muted, #8b949e); margin-top: 2px;">Start minimized to system tray when Windows boots</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="cfg-startup" ${config.launchAtStartup ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label>Scanning Speed (Resource Usage)</label>
+                        <input type="range" id="cfg-speed" min="10" max="100" value="${config.scanningSpeed || 50}">
+                    </div>
+                </div>
+                <div>
+                    <h3 style="margin-top: 0;">Threat Intelligence</h3>
+                    <div style="margin-bottom: 20px;">
+                        <label>VirusTotal API Key (Encrypted)</label>
+                        <input type="password" id="cfg-vtkey" value="${window.escapeHtml(config.vtApiKey || '')}" placeholder="Paste API key here...">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label>Intel Threshold</label>
+                        <select id="cfg-intel-level">
+                            <option value="0" ${config.threatIntelligenceLevel == 0 ? 'selected' : ''}>Conservative (Local Only)</option>
+                            <option value="1" ${config.threatIntelligenceLevel == 1 ? 'selected' : ''}>Standard (Balanced)</option>
+                            <option value="2" ${config.threatIntelligenceLevel == 2 ? 'selected' : ''}>Aggressive (Cloud Scan All)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                <button onclick="api.openLogsFolder()">Open System Logs Directory</button>
+                <button onclick="api.exportConfig()">Export Security Policy</button>
+                <button onclick="api.importConfig()">Import Security Policy</button>
+            </div>
+        `;
 
-    window.syncSettingsUI = async () => {
-        const cfg = await api.getConfig(); 
-        const vt = document.getElementById('vt-api-key');
-        if (vt) vt.value = cfg.vtApiKey || ''; 
-        const wle = document.getElementById('wl-emails');
-        if (wle) wle.value = (cfg.whitelist?.emails || []).join('\n');
-        const ble = document.getElementById('bl-emails');
-        if (ble) ble.value = (cfg.blacklist?.emails || []).join('\n');
-        const wli = document.getElementById('wl-ips');
-        if (wli) wli.value = (cfg.whitelist?.ips || []).join('\n');
-        const bli = document.getElementById('bl-ips');
-        if (bli) bli.value = (cfg.blacklist?.ips || []).join('\n');
-        const wld = document.getElementById('wl-domains');
-        if (wld) wld.value = (cfg.whitelist?.domains || []).join('\n');
-        const bld = document.getElementById('bl-domains');
-        if (bld) bld.value = (cfg.blacklist?.domains || []).join('\n');
-        const wlc = document.getElementById('wl-combos');
-        if (wlc) wlc.value = (cfg.whitelist?.combos || []).join('\n');
-        const blc = document.getElementById('bl-combos');
-        if (blc) blc.value = (cfg.blacklist?.combos || []).join('\n');
-        const sk = document.getElementById('spam-keywords');
-        if (sk) sk.value = (cfg.spamKeywords || []).join('\n');
-        const la = document.getElementById('launch-at-startup');
-        if (la) la.checked = !!cfg.launchAtStartup;
+        document.getElementById('save-settings-btn').onclick = async () => {
+            const btn = document.getElementById('save-settings-btn');
+            const oldText = btn.textContent;
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
 
-        const intel = cfg.threatIntelligenceLevel !== undefined ? cfg.threatIntelligenceLevel : 1;
-        const intelSlider = document.getElementById('threat-intel-slider');
-        if (intelSlider) {
-            intelSlider.value = intel;
-            document.getElementById('threat-intel-desc').textContent = intelTips[intel];
-        }
-        
-        const speed = cfg.scanningSpeed !== undefined ? cfg.scanningSpeed : 50;
-        const slider = document.getElementById('scanning-speed-slider');
-        if (slider) slider.value = speed;
-        const valText = document.getElementById('scanning-speed-val');
-        if (valText) valText.textContent = speed + '%';
-    };
+            try {
+                const startupEnabled = document.getElementById('cfg-startup').checked;
+                await api.setEnabled(document.getElementById('cfg-enabled').checked);
+                await api.setStartup(startupEnabled);
+                await api.setScanningSpeed(parseInt(document.getElementById('cfg-speed').value));
+                await api.setVTKey(document.getElementById('cfg-vtkey').value);
+                await api.setThreatIntelLevel(parseInt(document.getElementById('cfg-intel-level').value));
 
-    document.getElementById('scanning-speed-slider').oninput = (e) => {
-        const val = e.target.value;
-        document.getElementById('scanning-speed-val').textContent = val + '%';
-    };
-    document.getElementById('scanning-speed-slider').onchange = (e) => {
-        api.setScanningSpeed(parseInt(e.target.value));
-        window.showNotification(`Scanning Engine Speed set to ${e.target.value}%`);
-    };
-
-    document.getElementById('threat-intel-slider').oninput = (e) => {
-        document.getElementById('threat-intel-desc').textContent = intelTips[e.target.value];
-    };
-
-    document.getElementById('reset-performance-btn').onclick = async () => {
-        const slider = document.getElementById('scanning-speed-slider');
-        slider.value = 50;
-        document.getElementById('scanning-speed-val').textContent = '50%';
-        await api.setScanningSpeed(50);
-        
-        const intelSlider = document.getElementById('threat-intel-slider');
-        intelSlider.value = 1;
-        document.getElementById('threat-intel-desc').textContent = intelTips[1];
-        await api.setThreatIntelLevel(1);
-
-        window.showNotification('Performance profile reset to balanced defaults.');
-    };
-
-    document.getElementById('settings-btn').onclick = async () => { 
-        document.getElementById('settings-modal').style.display = 'flex';
-        // Reset to first tab
-        document.querySelector('.tab-btn[data-tab="tab-general"]').click();
-        await window.syncSettingsUI();
-    };
-
-    document.getElementById('toggle-vt-visibility').onclick = () => {
-        const el = document.getElementById('vt-api-key');
-        el.type = el.type === 'password' ? 'text' : 'password';
-    };
-
-    const handleIO = (e) => {
-        const btn = e.target;
-        const targetId = btn.dataset.target;
-        const action = btn.dataset.action;
-        if (action === 'export') {
-            const val = document.getElementById(targetId).value;
-            const blob = new Blob([val.split('\n').filter(s=>s.trim()).join(',')], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${targetId}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
-            window.showNotification(`Exported ${targetId} to CSV.`);
-        } else {
-            const inp = document.createElement('input');
-            inp.type = 'file';
-            inp.accept = '.csv,.txt';
-            inp.onchange = (ie) => {
-                const file = ie.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (re) => {
-                    const content = re.target.result;
-                    const items = content.split(/[,\n\r]+/).map(s=>s.trim()).filter(Boolean);
-                    document.getElementById(targetId).value = items.join('\n');
-                    window.showNotification(`Imported ${items.length} items from CSV.`);
-                };
-                reader.readAsText(file);
-            };
-            inp.click();
-        }
-    };
-
-    document.querySelectorAll('.csv-io').forEach(b => b.onclick = handleIO);
-
-    document.getElementById('export-keywords-btn').onclick = () => {
-        const text = document.getElementById('spam-keywords').value;
-        const blob = new Blob([text.split('\n').filter(s=>s.trim()).join(',')], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'spam_keywords.csv';
-        a.click();
-        URL.revokeObjectURL(url);
-        window.showNotification('Exported spam keywords to CSV.');
-    };
-
-    document.getElementById('import-keywords-btn').onclick = () => document.getElementById('import-keywords-input').click();
-    document.getElementById('import-keywords-input').onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (re) => {
-            const content = re.target.result;
-            const keywords = content.split(/[,\n\r]+/).map(s=>s.trim()).filter(Boolean);
-            document.getElementById('spam-keywords').value = keywords.join('\n');
-            window.showNotification(`Imported ${keywords.length} keywords.`);
+                window.addLog(`Security policy updated: Startup on boot ${startupEnabled ? '[Enabled]' : '[Disabled]'}`);
+                window.closeSettings();
+            } catch (err) {
+                console.error("Save Error:", err);
+                window.addLog("Error saving settings: " + err.message);
+                alert("Failed to save settings. Please check the logs.");
+            } finally {
+                btn.textContent = oldText;
+                btn.disabled = false;
+            }
         };
-        reader.readAsText(file);
-    };
+    }
 
-    document.getElementById('export-app-config').onclick = async () => {
-        const res = await api.exportConfig();
-        if (res.success) {
-            window.showNotification('Full system configuration exported successfully.');
-        }
-    };
-
-    document.getElementById('import-app-config').onclick = async () => {
-        const res = await api.importConfig();
-        if (res.success) {
-            window.showNotification('System configuration imported. Reloading UI...');
-            await window.syncSettingsUI();
-        } else if (res.error) {
-            window.showNotification('Config Import Error: ' + res.error, true);
-        }
-    };
-
-    document.getElementById('save-settings').onclick = async () => {
-        const vt = document.getElementById('vt-api-key').value;
-        const kw = document.getElementById('spam-keywords').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const wle = document.getElementById('wl-emails').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const ble = document.getElementById('bl-emails').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const wli = document.getElementById('wl-ips').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const bli = document.getElementById('bl-ips').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const wld = document.getElementById('wl-domains').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const bld = document.getElementById('bl-domains').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const wlc = document.getElementById('wl-combos').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const blc = document.getElementById('bl-combos').value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const startup = document.getElementById('launch-at-startup').checked;
-        
-        await api.setVTKey(vt); 
-        await api.setSpamKeywords(kw);
-        await api.setWhitelist({ emails: wle, ips: wli, domains: wld, combos: wlc });
-        await api.setBlacklist({ emails: ble, ips: bli, domains: bld, combos: blc });
-        await api.setStartup(startup);
-        await api.setThreatIntelLevel(parseInt(document.getElementById('threat-intel-slider').value));
-        
-        window.showNotification('Security policy and system settings saved.');
-        document.getElementById('settings-modal').style.display = 'none';
-    };
-
-    document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
-    
-    // Connect Nuclear Reset
-    const resetBtn = document.getElementById('reset-btn');
-    if (resetBtn) resetBtn.onclick = () => {
-        if (typeof window.nuclearReset === 'function') {
-            window.nuclearReset();
-        }
-    };
+    return { sync: sync };
 })();
+
+window.syncSettingsUI = SecurityUI.Settings.sync;

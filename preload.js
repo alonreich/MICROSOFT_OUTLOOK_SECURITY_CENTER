@@ -1,4 +1,4 @@
-﻿const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 const invoke = (channel, payload) => ipcRenderer.invoke(channel, payload);
 
@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('securityApi', {
     getConfig: () => invoke('get-config'),
     setEnabled: value => invoke('set-enabled', value),
     setHistoryEnabled: value => invoke('set-history-enabled', value),
+    setProcessedIds: value => invoke('set-processed-ids', value),
     setVTKey: value => invoke('set-vt-key', value),
     setSpamKeywords: value => invoke('set-spam-keywords', value),
     setRubrics: value => invoke('set-rubrics', value),
@@ -20,6 +21,8 @@ contextBridge.exposeInMainWorld('securityApi', {
     importConfig: () => invoke('import-config'),
     openLogsFolder: () => invoke('open-logs-folder'),
     resetApp: () => invoke('app-reset'),
+    minimizeWindow: () => ipcRenderer.send('window-minimize'),
+    hideWindow: () => ipcRenderer.send('window-hide'),
     releaseEmail: value => invoke('release-email', value),
     cleanupListeners: () => {
         ipcRenderer.removeAllListeners('outlook-scan-update');
@@ -27,12 +30,13 @@ contextBridge.exposeInMainWorld('securityApi', {
         ipcRenderer.removeAllListeners('stats-update');
         ipcRenderer.removeAllListeners('live-log');
         ipcRenderer.removeAllListeners('outlook-status');
+        ipcRenderer.removeAllListeners('duplicate-update');
     },
-    onOutlookScanUpdate: callback => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
+    onScanUpdate: callback => ipcRenderer.on('outlook-scan-update', (event, data) => callback(data)),
     onStatusSync: callback => ipcRenderer.on('status-sync', (event, value) => callback(value)),
     onStatsUpdate: callback => ipcRenderer.on('stats-update', (event, data) => callback(data)),
     onLiveLog: callback => ipcRenderer.on('live-log', (event, message) => callback(message)),
-    onOutlookStatus: callback => ipcRenderer.on('outlook-status', (event, running) => callback(running)),
+    onOutlookStatus: callback => ipcRenderer.on('outlook-status', (event, data) => callback(data)),
     quarantineEmail: (data) => invoke('quarantine-email', data),
     deleteEmail: (data) => invoke('delete-email', data),
     verifyExistence: (data) => invoke('verify-existence', data),
@@ -45,4 +49,3 @@ contextBridge.exposeInMainWorld('securityApi', {
     onDuplicateUpdate: callback => ipcRenderer.on('duplicate-update', (event, data) => callback(data)),
     scanForViruses: (id) => invoke('scan-virus', id)
 });
-

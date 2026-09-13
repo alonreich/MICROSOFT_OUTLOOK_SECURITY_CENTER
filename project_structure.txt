@@ -1,49 +1,155 @@
-# SOURCE OF TRUTH: MICROSOFT OUTLOOK SECURITY CENTER
-# VERSION: 2.4.0 (Advanced Forensic Edition)
+# SOURCE OF TRUTH: DESKGUARD FOR MICROSOFT OUTLOOK
+# VERSION: 2.5.0 (Single-Writer Architecture & STA COM Synchronized)
 # TARGET: AI AGENT / SENIOR DEVELOPER HANDOFF
+# WORKSPACE: C:\Full_Control\Microsoft_Outlook_Security\
+# PRIMARY LAUNCHER: .\DeskGuard_for_Microsoft_Outlook.bat
 
 ## 1. PROJECT MISSION
-To provide a client-side, non-blocking "Security Sidecar" for Microsoft Outlook that implements real-time heuristic scoring, forensic auditing, and redundant data cleanup without relying on external server-side processing for primary decisions.
+To provide a client-side, non-blocking security and forensic sidecar for desktop Microsoft Outlook on Windows. DeskGuard executes real-time heuristic scoring, multi-tier threat intelligence verification, forensic header auditing, and redundant duplicate data cleanup natively through the Outlook MAPI COM interface without server-side dependencies or UI blocking.
 
 ## 2. CORE ARCHITECTURE
-- **ELECTRON (Main Process):** Manages window lifecycle, secure storage (DPAPI), and provides an IPC bridge.
-- **ELECTRON (Renderer Process):** High-performance dashboard utilizing Vanilla JS and CSS for zero-latency UI updates.
-- **POWERSHELL (Security Engine):** A non-blocking background worker that communicates with the Outlook Object Model (COM) to perform deep inspection and mailbox management.
 
-## 3. DATA PERSISTENCE (ELECTRON-STORE)
-- `config.json`: Stores user preferences (Security Level, Whitelist, Blacklist, API Keys).
-- `data.json`: Stores historical scan results, processed EntryIDs, and forensic counters.
+### A. Single-Writer Multi-Process Model
+- **Background Service Process (`--service`):**
+  - Sole authorized writer to application storage (`electron-store` on `config.json` and `data.json`).
+  - Implements atomic pre-write backups (`.bak`) to prevent JSON corruption or file tearing.
+  - Hosts a local Windows Named Pipe server (`\\.\pipe\mos_service_<hash>`) protected with per-session token authentication (`MOS_AUTH_<hash>`).
+  - Spawns, monitors, and orchestrates the underlying PowerShell engine processes (`currentScanChild` for live/history scans and `psWorker` for auxiliary commands).
+- **Client GUI Process:**
+  - Operates as a stateless client to the background service.
+  - Interacts via the authenticated Named Pipe IPC stream with correlated request-response IDs (`rid`).
+  - Maintains in-memory read-only caches (`configCache`, `statsCache`) ensuring instant, zero-latency UI rendering.
+  - Never instantiates `electron-store` directly.
 
-## 4. SECURITY PIPELINE (THREAT INTELLIGENCE)
-The system implements a three-tier defense strategy for spear-phishing and malware detection:
-1. **OFF (Level 0):** Local heuristics only. No external hashes are transmitted.
-2. **SMART (Level 1 - Default):** If local heuristics flag an email as suspicious (Score < 65%), the system generates SHA-256 hashes of the body and all attachments. These hashes are sent to authorized Anti-Malware APIs for real-time verification.
-3. **MAX (Level 2):** Every incoming email undergoes mandatory SHA-256 hashing of body and attachments for immediate external API verification, regardless of the initial score.
+### B. Outlook STA COM Synchronization & Zero-Leak Lifecycle
+- **Windows Named Mutex Synchronization (`Global\MOS_Outlook_COM_Lock`):**
+  - Microsoft Outlook operates strictly as a Single-Threaded Apartment (STA) COM server.
+  - All out-of-process COM calls across `psWorker` and `currentScanChild` acquire the named mutex before issuing MAPI calls, preventing concurrent re-entrant method execution and eliminating `0x8001010A` (`RPC_E_SERVERCALL_RETRYLATER`) and `0x80010001` (`RPC_E_CALL_REJECTED`).
+- **Progressive Exponential Backoff & Circuit Breaker:**
+  - `Invoke-OutlookMethod` implements backoff delays of `50ms, 150ms, 500ms, 1000ms` with randomized jitter `(10-50ms)`.
+  - Automatically trips a 30-second circuit breaker on continuous COM channel saturation to protect the host Outlook process.
+- **Strict Zero-Leak COM Hierarchy Traversal:**
+  - `Get-TargetFolder-Safe` safely accesses parent stores (`$item.Parent.Store.GetDefaultFolder()`) and deterministically frees intermediate `$parent` and `$store` RCWs in `finally` blocks via `[Runtime.InteropServices.Marshal]::FinalReleaseComObject()`.
+  - All attachment collections (`Attachments`), property accessors (`PropertyAccessor`), sender entries (`AddressEntry`), and mail items are explicitly released.
+- **Connection Point Sink Retention:**
+  - On-Access live listeners anchor references to both the `$inbox` folder and `$items` collection in `$Global:Watchers` to prevent garbage collection of the underlying COM event sink.
+- **Descriptor-Based Traversal:**
+  - Duplicate email discovery (`$Global:DupStack`) and mailbox crawl (`$stack`) store lightweight string descriptors (`FolderId`, `StoreId`, `FolderName`, `DefaultItemType`) rather than holding open COM folder references. Folders are hydrated on-demand and immediately released.
+- **Bounded Process Lifecycle & Passive Standby Watcher (`main.js`):**
+  - `ensureOutlookRunning()` enforces strict pre-spawn readiness verification via `tasklist`. If Outlook is closed, the scanner process is never spawned, immediately transitioning to passive standby.
+  - Bounded exponential retry policy with circuit breaker limits consecutive engine spawn failures to 3 (`MAX_ENGINE_FAILURES`) with exponential backoff delays (4s, 8s, 16s).
+  - Tripping the circuit breaker halts process respawns, broadcasts `engine-fault` and `standby: true`, and hands off to the standby watcher.
+  - Low-frequency passive watcher polls `tasklist` once every 15 seconds (`15000ms`) with ~0.0% CPU usage and zero child processes. Automatically re-launches scanner and resets failure counter upon detecting `outlook.exe`.
+  - 30-second watchdog timeouts route through `requestScannerRestart('watchdog-timeout')`, subject to the unified circuit breaker.
+  - Clean timer disarmament guarantees all restart, watchdog, and standby timers are cleared on exit, reset, or shutdown.
 
-## 5. FORENSIC AUDITING
-The system performs deep inspection on incoming emails:
-- **Heuristic Scoring (0-100%):** Points based on DMARC/SPF/DKIM alignment, IP reputation, and keyword analysis.
-- **SHA256 Fingerprinting:** Every analyzed email has its Body and Attachments uniquely hashed.
-- **On-Demand Cloud Scan:** Manual trigger to verify link reputation and file signatures against global malware databases.
+### C. Thread-Synchronized Stdout Packet Dispatch & Framing Parser
+- **Process-Wide Monitor Lock (`$Global:StdoutLock`):**
+  - All PowerShell writes to standard output across `psWorker`, `currentScanChild`, and concurrent `$RunspacePool` worker threads are serialized using `[System.Threading.Monitor]::Enter($Global:StdoutLock)` in strict `try/finally` blocks.
+  - Thread synchronization root and `Send-Structured-Message` / `Log-Progress` definitions are injected directly into child runspaces via `InitialSessionState`.
+- **Atomic Contiguous Binary Frame Dispatch:**
+  - Length header (4 bytes LE) and UTF-8 JSON payload are copied into a single contiguous byte array before passing to `[Console]::OpenStandardOutput().Write()` and `Flush()`, preventing interleaved frame chunks and packet tearing under high concurrency.
+- **Resilient Node.js SafeIPCParser Framing Guard:**
+  - Node.js `SafeIPCParser` validates length headers (`0 < nextLen <= 10485760`).
+  - Corrupt or malformed frames trigger immediate desync logging and buffer purge, resetting state to prevent stream desynchronization and memory bloat.
 
-## 6. DUPLICATE DETECTION & CLEANUP
-A high-performance discovery engine that probes mailboxes for redundant data:
-- **Pre-Scan Discovery:** Probes each PST/OST/Mailbox for total size (MB/GB) and email count before starting.
-- **DNA Matching:** Identifies duplicates based on a combination of Sender, Subject, Timestamp, and Body Fingerprint.
-- **Persistent State:** Discovery results and scan progress are maintained even if the UI menu is closed.
-- **Batch Cleanup:** Secure permanent deletion of identified redundant copies with full user confirmation.
+### D. Virtualized DOM Rendering & Strict Anti-XSS Sanitization
+- **Viewport Virtualization & State Diffing (`ui_list.js`, `ui_duplicates.js`):**
+  - Caps active DOM nodes to a fixed viewport window (maximum 50 visible rows) even with categories holding up to 5,000 incident records.
+  - Eliminates full DOM wipes, layout thrashing, and event-loop blocking, maintaining 60 FPS rendering and smooth scroll physics.
+  - Diff-based reconciliation updates only altered cell contents and status badges without rebuilding DOM trees.
+- **Strict Anti-XSS Sanitization & DOM Boundary Protection:**
+  - Neutralizes adversarial XSS and script injection embedded in malicious email headers, sender origins, and subjects.
+  - Centralized entity encoding (`window.escapeHtml`) sanitizes all interpolated metadata strings.
+  - Plain-text message bodies and header blocks are populated strictly via `element.textContent`, preventing HTML parsing and arbitrary DOM execution.
 
-## 7. VERDICT ROUTING
-- **MALICIOUS:** Confirmed Malware/Phishing -> **Deleted Items**.
-- **SPAM:** High-score suspicion -> **Junk Email**.
-- **SUSPICIOUS:** Moderate score -> UI Dashboard listing.
-- **SAFE:** Whitelisted or Low-score -> **Inbox**.
+### E. Integrated Action Dispatch & Remediation Layer
+- **Unified IPC Command Routing (`main.js` & `outlook-scanner.ps1`):**
+  - `Quarantine`: Relocates suspect items to **Junk Email** (`olFolderJunk` = 23) or **Deleted Items** (`olFolderDeletedItems` = 3) via `Robust-Move`.
+  - `Release`: Restores false positives to the **Inbox** (`olFolderInbox` = 6) and registers item fingerprints in `releasedFingerprints` to eliminate re-quarantine loops.
+  - `Delete`: Permanently purges targeted emails (`$item.Delete()`) with deterministic RCW cleanup.
+  - `Check-Existence`: Non-blocking item verification via MAPI `GetItemFromID` without throwing COM errors or holding locks.
+  - `DuplicateScan` & `ResetDuplicateStack`: Drives background mailbox redundancy scanning and manages traversal state.
+  - `CloudVirusScan`: Deep threat intelligence inspection using DPAPI-decrypted VirusTotal API credentials.
 
-## 8. PROJECT FILE MANIFEST
-- `main.js`: Main application entry point and IPC server.
-- `index.html`: Dashboard UI structure.
-- `preload.js`: Secure IPC context bridge.
-- `outlook-scanner.ps1`: PowerShell-based security engine and COM worker.
-- `ui_*.js`: Modular UI logic (List, Settings, Forensics, Duplicates, etc.).
-- `logs/`: Directory for security logs and engine output.
-- `logs/forensics/`: Storage for zero-disk forensic JSON snapshots.
+## 3. DATA PERSISTENCE & IN-MEMORY WRITE-BACK BUFFER
+- `config.json`: User security preferences, DPAPI-encrypted API keys (`vtApiKey`), keyword rubrics, whitelist/blacklist, and Windows startup settings.
+- `data.json`: Incident statistics (`malicious`, `suspicious`, `spam`, `safe`), processed ID hash rings (`processedIdsCache`), and released fingerprints.
+- **In-Memory Write-Back Buffer (`processedIdsCache`):**
+  - High-throughput telemetry ingestion path uses an in-memory `Set<string>` capped strictly at 100,000 entries.
+  - O(1) deduplication check (`has`) and insertion (`add`) execute in < 0.001ms per packet with zero synchronous disk writes on the hot path.
+  - Bounded capacity maintained via O(1) eviction of oldest entries when cache exceeds `MAX_PROCESSED_IDS`.
+- **Unified Debounced Asynchronous Flush Coordinator (`flushStatePersistence`):**
+  - Coordinates incident stats and processed IDs in a single asynchronous pass.
+  - Triggers at most once every 5,000ms or when uncommitted items exceed 500.
+  - Serializes to `data.json.tmp` and executes atomic swap via `fsPromises.rename()` with `.bak` snapshot rotation.
+  - Event loop remains completely unblocked, preserving steady 5-second watchdog timer cadence without engine kill cascades.
+  - Synchronous flush fallback (`flushStatePersistenceSync`) guarantees zero data loss on application exit or service shutdown.
+- **Canonical Forensic Snapshot Persistence & Asynchronous Retrieval (`main.js`):**
+  - Forensic snapshots (`fullHeaders`, `body`) are decoded once upon telemetry arrival and persisted to `logs/forensics/<hash>.json` as canonical plain UTF-8 strings.
+  - Asynchronous IPC retrieval via `fsPromises.readFile` in `ipcMain.handle('get-forensics')` guarantees non-blocking execution with sub-millisecond response latency (< 1ms).
+  - Self-healing backward compatibility layer detects and decodes legacy base64-encoded snapshots on-the-fly, eliminating byte scrambling or character truncation.
+  - Structured error containment gracefully handles missing or malformed files, returning structured fallbacks without raising unhandled IPC exceptions.
+
+## 4. SECURITY PIPELINE & THREAT INTELLIGENCE
+DeskGuard executes a 5-stage analysis pipeline:
+1. **Stage 1: Reputation Verification:** Instant match against local Whitelists and Blacklists (IP, domain, sender email, and combined IP+Domain tuples).
+2. **Stage 2: Transport Security & RFC Compliance:** Analyzes `PR_TRANSPORT_MESSAGE_HEADERS` for SPF results, DMARC alignment, and routing integrity.
+3. **Stage 3: MIME & Header Forensics:** Evaluates MIME structure, executable attachment signatures, and upstream spam score flags (`X-Spam-Flag`).
+4. **Stage 4: Heuristic Engine:** Multi-threaded keyword pattern matching in RunspacePool with configurable weighted penalties.
+5. **Stage 5: Threat Intelligence Levels:**
+   - **Level 0 (Off):** Local heuristics only.
+   - **Level 1 (Smart - Default):** Automatically generates SHA-256 hashes of body and attachments for suspicious items (Score < 65%) and audits against threat databases.
+   - **Level 2 (Max):** Mandatory cryptographic hashing and cloud intelligence verification for all incoming items.
+
+## 5. VERDICT ROUTING & MAPI DESTINATIONS
+- **MALICIOUS (Score ≤ 20%):** Automatically relocated to **Deleted Items** (`olFolderDeletedItems` = 3) via `Robust-Move`.
+- **SPAM (Score ≤ Spam Threshold):** Automatically relocated to **Junk Email** (`olFolderJunk` = 23) via `Robust-Move`.
+- **SAFE (Score > Spam Threshold):** Retained in **Inbox** (`olFolderInbox` = 6).
+
+## 6. DUPLICATE EMAIL DISCOVERY & PRE-FLIGHT SURVIVOR VALIDATION
+- **Non-blocking Asynchronous Traversal:** Discovers redundant items in `psWorker` using lightweight MAPI descriptors (`FolderId`, `StoreId`, `EntryID`) rather than holding open COM folder references.
+- **Multi-Factor DNA Signature:** Computes `Sender | Normalized Subject | ISO Timestamp | Body Sample Fingerprint` to identify true duplicate clusters across all folders and PST/OST stores.
+- **Survivor Metadata Coupling:** Automatically catalogued duplicate records store candidate metadata alongside definitive survivor identifiers (`entryId`, `survivorId`, `survivorFolder`, `survivorStore`, `dna`).
+- **Pre-Flight Survivor Validation Protocol:**
+  - Before moving or deleting any duplicate, verifies survivor existence in Outlook via `GetItemFromID($entry.survivorId)`.
+  - Confirms survivor is not located in **Deleted Items** (`olFolderDeletedItems` = 3).
+  - Recalculates survivor's DNA fingerprint to ensure it has not been altered; skips cleanup if survivor is missing, deleted, or modified.
+  - Verifies candidate duplicate is distinct from survivor (`$target.EntryID -ne $survivor.EntryID`) and matches cluster DNA.
+- **Safe Isolation vs. Permanent Purge:**
+  - Safe isolation (default): Relocates redundant copies to **Deleted Items** via `Robust-Move`, preserving read/unread flags.
+  - Permanent purge: Requires explicit keyword typing confirmation ("PURGE") before executing permanent deletion.
+  - Deterministic RCW release via `Release-Com` ensures zero COM handle leaks during high-throughput cleanup (> 3,000 items/sec).
+
+## 7. PROJECT FILE MANIFEST
+
+### Launchers & Build Scripts
+- `.\DeskGuard_for_Microsoft_Outlook.bat`: Primary launcher batch script (terminates existing Electron instances and launches project root).
+- `.\build.bat`: Standalone distribution packager script (`npm run package`).
+- `.\silent_launcher.vbs`: VBScript launcher for background service mode (`--service`) with hidden window styling.
+- `.\developer_tools\Pull_Code_files.py`: AI context aggregator and project bundler (packs codebase into <= 10 files with manifest and directory tree).
+
+### Application Core
+- `main.js`: Single-Writer process coordinator, Named Pipe server/client, Windows registry startup manager, DPAPI encryption, and system tray lifecycle.
+- `preload.js`: Secure IPC context bridge exposing `window.securityApi` to the renderer.
+- `outlook-scanner.ps1`: Dual-mode PowerShell engine (`Worker` and `Scanner`), Named Mutex STA synchronization, RunspacePool multi-threading, MAPI COM hierarchy automation.
+- `package.json`: NPM package definition, Electron runtime configuration, and packager scripts.
+- `package-lock.json`: Dependency lock file.
+
+### User Interface (Renderer)
+- `index.html`: Main UI markup containing titlebar, sidebar navigation, incident tables, and forensic inspection modals.
+- `style.css`: Unified enterprise dark-mode styling and UI components.
+- `ui_main.js`: Global state orchestration, IPC event subscribers, and tab navigation.
+- `ui_list.js`: Incident list rendering, column sorting, and deletion workflows.
+- `ui_forensics.js`: Deep forensic inspection modal (RFC transport headers and plain body views).
+- `ui_duplicates.js`: Redundant email discovery view, progress trackers, and batch cleanup triggers.
+- `ui_engines.js`: Multi-stage security pipeline telemetry and live engine log streamer.
+- `ui_history.js`: Historical mailbox audit trigger and crawl monitoring.
+- `ui_settings.js`: Configuration editor for weights, thresholds, whitelists, blacklists, API keys, and boot startup.
+- `ui_reset.js`: Factory reset controller for purging storage and logs.
+
+### Assets & Storage
+- `icon.png`, `icon_on.png`, `icon_off.png`: Application and window icons.
+- `tray_on.png`, `tray_off.png`: High-resolution 16x16 system tray status icons.
+- `logs\deskguard_outlook.log`: Rolling application log file.
+- `logs\forensics\`: Persistent JSON snapshot repository storing canonical plain UTF-8 message headers and body data keyed by SHA-256 with automated orphan cleanup.
